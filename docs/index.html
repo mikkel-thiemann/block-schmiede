@@ -1,0 +1,1816 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>Block-Schmiede KI</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: links die Bestellung (was soll gebaut werden), rechts die Werkbank (Dateien, Prüfung, Anleitung). Bewusst nur ein dunkler "Deepslate"-Look. */
+:root {
+  color-scheme: dark;
+  --ground: #17191e;
+  --panel: #23262d;
+  --panel-2: #2c3039;
+  --edge-light: #3d424d;
+  --edge-dark: #0e0f12;
+  --text: #e8e6df;
+  --muted: #9da3ae;
+  --gold: #f2b84b;
+  --gold-ink: #2a1c02;
+  --emerald: #4fd18b;
+  --redstone: #ff6b5b;
+  --lapis: #6ea8ff;
+  --code-bg: #121317;
+  --font-pixel: "Pixelify Sans", "Courier New", monospace;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,.015) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.015) 75%),
+    linear-gradient(45deg, rgba(255,255,255,.015) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.015) 75%);
+  background-size: 32px 32px;
+  background-position: 0 0, 16px 16px;
+}
+.wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 20px; }
+header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+header.top canvas { width: 48px; height: 48px; image-rendering: pixelated; }
+h1 { font-family: var(--font-pixel); font-weight: 700; font-size: clamp(26px, 4vw, 38px); margin: 0; letter-spacing: .5px; text-wrap: balance; }
+h1 span { color: var(--gold); }
+.tagline { color: var(--muted); margin: 2px 0 0; max-width: 62ch; }
+h2 { font-family: var(--font-pixel); font-weight: 500; font-size: 20px; margin: 0; letter-spacing: .3px; }
+.label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.slab {
+  background: var(--panel);
+  border: 2px solid var(--edge-dark);
+  box-shadow: inset 2px 2px 0 var(--edge-light), inset -2px -2px 0 #15171b;
+  padding: 18px;
+  display: grid; gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mode {
+  appearance: none; cursor: pointer; color: var(--text);
+  background: var(--panel-2); border: 2px solid var(--edge-dark);
+  box-shadow: inset 2px 2px 0 var(--edge-light), inset -2px -2px 0 #1a1c21;
+  padding: 10px 6px 8px; display: grid; justify-items: center; gap: 6px;
+  font: 600 13px var(--font-body);
+}
+.mode canvas { width: 36px; height: 36px; image-rendering: pixelated; }
+.mode small { font-weight: 400; color: var(--muted); font-size: 11px; }
+.mode[aria-pressed="true"] { background: #3a3220; border-color: var(--gold); box-shadow: inset 2px 2px 0 #5a4a28, inset -2px -2px 0 #221b0c; }
+.mode:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible, .file:focus-visible { outline: 2px solid var(--lapis); outline-offset: 2px; }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+.field { display: grid; gap: 6px; flex: 1 1 140px; min-width: 0; }
+select, textarea {
+  width: 100%; background: var(--code-bg); color: var(--text);
+  border: 2px solid var(--edge-dark); box-shadow: inset 2px 2px 0 #0a0b0d;
+  font: 15px var(--font-body); padding: 9px 10px; border-radius: 0;
+}
+textarea { resize: vertical; min-height: 120px; line-height: 1.45; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  appearance: none; cursor: pointer; background: transparent; color: var(--muted);
+  border: 1px dashed var(--edge-light); padding: 4px 8px; font: 12.5px var(--font-body); text-align: left;
+}
+.chip:hover { color: var(--text); border-color: var(--gold); }
+
+.btn {
+  appearance: none; cursor: pointer; border: 2px solid var(--edge-dark);
+  font: 700 16px var(--font-pixel); letter-spacing: .4px;
+  padding: 11px 16px; color: var(--gold-ink); background: var(--gold);
+  box-shadow: inset 2px 2px 0 #ffe0a0, inset -3px -3px 0 #b07a17;
+}
+.btn:hover { filter: brightness(1.06); }
+.btn:active { box-shadow: inset 3px 3px 0 #b07a17; }
+.btn[disabled] { filter: grayscale(.8) brightness(.7); cursor: not-allowed; }
+.btn.ghost { background: var(--panel-2); color: var(--text); box-shadow: inset 2px 2px 0 var(--edge-light), inset -2px -2px 0 #1a1c21; font-family: var(--font-body); font-weight: 600; font-size: 14px; padding: 8px 12px; }
+.btn.stop { background: var(--redstone); color: #2b0703; box-shadow: inset 2px 2px 0 #ffb3a9, inset -3px -3px 0 #a3271b; }
+.btn.wide { width: 100%; }
+
+.notice { border-left: 4px solid var(--lapis); background: #1d2430; padding: 10px 12px; font-size: 13.5px; color: #cfd9ea; }
+.notice.bad { border-color: var(--redstone); background: #2d1c1b; color: #f3d0cb; }
+
+.bench-head { display: flex; gap: 12px; align-items: start; justify-content: space-between; flex-wrap: wrap; }
+.bench-head .meta { min-width: 0; display: grid; gap: 2px; }
+.pill { display: inline-block; font: 600 11px var(--font-body); letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border: 1px solid currentColor; color: var(--gold); margin-right: 6px; vertical-align: 2px; }
+.pill.example { color: var(--lapis); }
+.project-name { font-family: var(--font-pixel); font-size: 24px; font-weight: 700; overflow-wrap: anywhere; }
+.project-info { color: var(--muted); max-width: 70ch; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.status { font: 13px var(--font-code); color: var(--muted); display: flex; gap: 10px; align-items: center; min-height: 20px; }
+.status .dot { width: 10px; height: 10px; background: var(--muted); flex: none; }
+.status.work .dot { background: var(--gold); animation: blink 1s steps(2) infinite; }
+.status.ok .dot { background: var(--emerald); }
+.status.err .dot { background: var(--redstone); }
+@keyframes blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .status.work .dot { animation: none; } }
+
+.bench { display: grid; grid-template-columns: minmax(0, 250px) minmax(0, 1fr); gap: 12px; min-height: 360px; }
+@media (max-width: 640px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.files { background: var(--code-bg); border: 2px solid var(--edge-dark); padding: 6px; display: grid; align-content: start; gap: 2px; max-height: 520px; overflow: auto; }
+.file {
+  appearance: none; cursor: pointer; text-align: left; background: transparent; border: 0; color: var(--text);
+  font: 12.5px var(--font-code); padding: 5px 7px; display: flex; gap: 8px; align-items: baseline; min-width: 0;
+}
+.file .p { overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.file .p b { font-weight: 600; }
+.file .p i { font-style: normal; color: var(--muted); }
+.file .n { color: var(--muted); font-size: 11px; flex: none; font-variant-numeric: tabular-nums; }
+.file:hover { background: #1c1e24; }
+.file[aria-current="true"] { background: #3a3220; color: #fff; }
+.file.writing .n { color: var(--gold); }
+.empty-files { color: var(--muted); font-size: 13px; padding: 10px; }
+
+.viewer { min-width: 0; display: grid; grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); border: 2px solid var(--edge-dark); background: var(--code-bg); }
+.viewer-bar { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 8px; background: #1a1c21; border-bottom: 2px solid var(--edge-dark); flex-wrap: wrap; }
+.viewer-bar .path { font: 12.5px var(--font-code); color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.code { margin: 0; overflow: auto; max-height: 520px; font: 12.5px/1.6 var(--font-code); padding: 10px 0; tab-size: 4; }
+.code .l { display: block; padding: 0 14px 0 0; white-space: pre; }
+.code .l::before { content: attr(data-n); display: inline-block; width: 3.6em; padding-right: 1em; text-align: right; color: #555b66; user-select: none; }
+.pixel-view { padding: 18px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.pixel-view canvas { width: 192px; height: 192px; image-rendering: pixelated; background: repeating-conic-gradient(#2a2d34 0% 25%, #22252b 0% 50%) 0 0 / 16px 16px; border: 2px solid var(--edge-dark); max-width: 100%; }
+
+.checks { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+.checks li { display: flex; gap: 8px; align-items: baseline; }
+.checks li::before { content: ""; width: 9px; height: 9px; flex: none; background: var(--emerald); transform: translateY(-1px); }
+.checks li.warn::before { background: var(--gold); }
+.checks li.err::before { background: var(--redstone); }
+
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.sub { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.guide { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; max-width: 72ch; }
+.guide li::marker { color: var(--gold); font-family: var(--font-pixel); }
+.hint { color: var(--muted); font-size: 13px; margin: 0; }
+textarea.small { min-height: 84px; font-size: 14px; }
+.preview { display: grid; gap: 10px; min-width: 0; }
+.pv-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; justify-content: space-between; }
+.pv-stage { position: relative; border: 2px solid var(--edge-dark); background: #000; aspect-ratio: 16 / 9; max-width: 100%; }
+.pv-stage canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.pv-stage canvas:active { cursor: grabbing; }
+.pv-msg { position: absolute; inset: 0; overflow: auto; background: rgba(18, 19, 23, .95); padding: 14px; display: grid; align-content: start; gap: 10px; font-size: 14px; }
+.pv-msg pre { margin: 0; white-space: pre-wrap; font: 12px/1.5 var(--font-code); color: #f3d0cb; overflow-wrap: anywhere; }
+.pv-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pv-time { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; min-width: 0; }
+.pv-time input { flex: 1; min-width: 0; accent-color: var(--gold); }
+.mono { font: 13px var(--font-code); font-variant-numeric: tabular-nums; }
+.pv-check { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.pv-thumbs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 560px) { .pv-thumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.thumb { appearance: none; padding: 0; border: 2px solid var(--edge-dark); background: #000; cursor: pointer; position: relative; aspect-ratio: 16 / 9; overflow: hidden; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb span { position: absolute; left: 0; bottom: 0; background: rgba(0, 0, 0, .72); color: #fff; font: 600 11px var(--font-body); padding: 2px 6px; letter-spacing: .05em; text-transform: uppercase; }
+.thumb:hover { border-color: var(--gold); }
+.pv-video { display: grid; gap: 8px; justify-items: start; }
+.pv-video video { width: 100%; border: 2px solid var(--edge-dark); background: #000; }
+.pv-mod { display: grid; gap: 10px; justify-items: start; }
+#pv-inv { image-rendering: pixelated; max-width: 100%; }
+.pv-items { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.pv-items li { display: flex; gap: 6px; align-items: center; }
+.pv-items canvas { width: 24px; height: 24px; image-rendering: pixelated; }
+.chat { background: linear-gradient(#6f9fd6, #a9c8ea 55%, #5d8a3a 55%, #3c5f26); padding: 48px 12px 12px; display: grid; gap: 2px; min-height: 160px; align-content: end; border: 2px solid var(--edge-dark); }
+.chat div { background: rgba(0, 0, 0, .5); color: #fff; font: 16px var(--font-pixel); padding: 2px 6px; text-shadow: 2px 2px 0 rgba(0, 0, 0, .55); justify-self: start; max-width: 100%; overflow-wrap: anywhere; }
+.launch { border-left-color: var(--gold); background: #2a2517; color: #efe2c4; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--panel-2); border: 2px solid var(--gold); padding: 8px 14px; font-size: 14px; z-index: 20; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <canvas id="logo" width="16" height="16" aria-hidden="true"></canvas>
+    <div>
+      <h1>Block-<span>Schmiede</span> KI</h1>
+      <p class="tagline">Beschreibe deinen Shader, deine Mod oder dein Datapack. Die KI baut alle Dateien, prüft sie und packt sie dir als fertige ZIP-Datei.</p>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- BESTELLUNG -->
+    <section class="slab" aria-labelledby="order-h">
+      <h2 id="order-h">Was soll ich bauen?</h2>
+      <div class="modes" role="group" aria-label="Projektart">
+        <button class="mode" id="mode-shader" data-mode="shader" aria-pressed="true"><canvas width="12" height="12" data-icon="shader"></canvas>Shader<small>Iris / OptiFine</small></button>
+        <button class="mode" id="mode-mod" data-mode="mod" aria-pressed="false"><canvas width="12" height="12" data-icon="mod"></canvas>Mod<small>Fabric</small></button>
+        <button class="mode" id="mode-datapack" data-mode="datapack" aria-pressed="false"><canvas width="12" height="12" data-icon="datapack"></canvas>Datapack<small>Vanilla</small></button>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label class="label" for="version">Minecraft-Version</label>
+          <select id="version"></select>
+        </div>
+        <div class="field">
+          <label class="label" for="quality">Qualität</label>
+          <select id="quality">
+            <option value="complex" selected>Gründlich (beste)</option>
+            <option value="default">Schneller</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="desc">Deine Beschreibung</label>
+        <textarea id="desc" placeholder="Zum Beispiel: Ein Shader mit warmem Abendlicht, leuchtendem Himmel und Wasser, das glitzert."></textarea>
+      </div>
+      <div class="sub">
+        <span class="label">Ideen zum Antippen</span>
+        <div class="chips" id="chips"></div>
+      </div>
+
+      <div id="no-ai" class="notice" hidden>Die KI läuft nur, wenn du diese Seite in Claude öffnest. Hier kannst du das Beispiel, die 3D-Vorschau, Fotos, Video und den ZIP-Download ausprobieren.</div>
+      <button class="btn wide" id="go">Jetzt schmieden</button>
+      <button class="btn stop wide" id="stop" hidden>Stopp</button>
+      <p class="hint">Gründlich dauert meist 1–3 Minuten. Du siehst live, welche Datei gerade entsteht.</p>
+    </section>
+
+    <!-- WERKBANK -->
+    <section class="slab" aria-labelledby="bench-h">
+      <h2 id="bench-h" hidden>Werkbank</h2>
+      <div class="bench-head">
+        <div class="meta">
+          <div><span class="pill" id="kind-pill">Shader</span><span class="pill example" id="example-pill">Beispiel</span></div>
+          <div class="project-name" id="p-name">–</div>
+          <div class="project-info" id="p-info"></div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="zip">ZIP herunterladen</button>
+        </div>
+      </div>
+      <div class="status" id="status" role="status"><span class="dot"></span><span id="status-text">Bereit.</span></div>
+
+      <div class="preview" id="preview">
+        <div class="pv-head"><span class="label" id="pv-title">So sieht es aus</span><span class="hint" id="pv-sub"></span></div>
+        <div id="pv-shader">
+          <div class="preview">
+            <div class="pv-stage">
+              <canvas id="pv-canvas" width="960" height="540" aria-label="3D-Vorschau: Mini-Welt mit deinem Shader. Ziehen zum Drehen, Mausrad zum Zoomen."></canvas>
+              <div class="pv-msg" id="pv-msg" hidden></div>
+            </div>
+            <div class="pv-controls">
+              <label class="pv-time" for="pv-time"><span class="label">Uhrzeit</span><input type="range" id="pv-time" min="0" max="24000" step="50" value="11800"><span id="pv-time-label" class="mono">17:48</span></label>
+              <label class="pv-check" for="pv-rain"><input type="checkbox" id="pv-rain"> Regen</label>
+              <button class="btn ghost" id="pv-orbit" aria-pressed="true">Rundflug an</button>
+              <button class="btn ghost" id="pv-photo">Foto speichern</button>
+              <button class="btn ghost" id="pv-rec">Video aufnehmen</button>
+            </div>
+            <div class="pv-thumbs" id="pv-thumbs"></div>
+            <div class="pv-video" id="pv-video" hidden><video id="pv-video-el" controls muted playsinline loop></video><button class="btn ghost" id="pv-video-save">Video speichern</button></div>
+          </div>
+        </div>
+        <div class="pv-mod" id="pv-mod" hidden><canvas id="pv-inv" width="528" height="120"></canvas><ul class="pv-items" id="pv-items"></ul><button class="btn ghost" id="pv-inv-save">Bild speichern</button></div>
+        <div id="pv-dp" hidden><div class="chat" id="pv-chat"></div></div>
+      </div>
+
+      <div class="bench">
+        <nav class="files" id="files" aria-label="Dateien"></nav>
+        <div class="viewer">
+          <div class="viewer-bar"><span class="path" id="v-path"></span><button class="btn ghost" id="copy">Kopieren</button></div>
+          <div id="v-body"></div>
+        </div>
+      </div>
+
+      <div class="two">
+        <div class="sub">
+          <span class="label">Automatische Prüfung</span>
+          <ul class="checks" id="checks"></ul>
+        </div>
+        <div class="sub">
+          <span class="label">So installierst du es</span>
+          <ol class="guide" id="guide"></ol>
+        </div>
+      </div>
+
+      <div class="notice launch"><b>Direkt in Minecraft öffnen:</b> Lade die ZIP herunter und mach einen Doppelklick auf <b>Block-Schmiede Starter</b> auf deinem Desktop. Er legt die Datei ins passende Profil (Modrinth, CurseForge oder normaler Launcher), schaltet den Shader in Iris gleich ein und öffnet Minecraft.</div>
+
+      <div class="two">
+        <div class="sub">
+          <label class="label" for="change">Etwas ändern</label>
+          <textarea class="small" id="change" placeholder="z.B. Mach den Himmel lila und die Schatten weicher."></textarea>
+          <button class="btn ghost" id="do-change">Änderung einbauen</button>
+        </div>
+        <div class="sub">
+          <label class="label" for="errlog">Fehler-Doktor</label>
+          <textarea class="small" id="errlog" placeholder="Füge hier die Fehlermeldung aus Minecraft, Iris oder Gradle ein."></textarea>
+          <button class="btn ghost" id="do-fix">Fehler reparieren</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(() => {
+"use strict";
+
+/* ---------- Pixel-Icons (eigene Mini-Pixelkunst) ---------- */
+const ICONS = {
+  logo: { pal: { ".": null, a: "#6b4a2b", b: "#8a6239", c: "#c9c9c9", d: "#8e8e8e", e: "#f2b84b", f: "#4a4f5a" },
+    rows: [
+      "................",
+      "..cccc..........",
+      ".cddddc.........",
+      ".cdeedc.........",
+      ".cdeedcc........",
+      "..cddcccb.......",
+      "...cc..bab......",
+      ".......baab.....",
+      "........baab....",
+      ".........baab...",
+      "..........baab..",
+      "...........bab..",
+      "ffffffffffffbff.",
+      "fddddddddddddf..",
+      "ffffffffffffff..",
+      "................"] },
+  shader: { pal: { ".": null, y: "#ffd34d", o: "#f29b30", w: "#fff4c2" },
+    rows: ["....y..y....",".y...yy...y.","...oyyyyo...","..oywwwwyo..","y.ywwwwwwy.y",".yywwwwwwyy.",".yywwwwwwyy.","y.ywwwwwwy.y","..oywwwwyo..","...oyyyyo...",".y...yy...y.","....y..y...."] },
+  mod: { pal: { ".": null, c: "#5be3e0", d: "#2fa8a5", b: "#8a6239", a: "#6b4a2b" },
+    rows: ["..cccccc....",".cddddddc...","cd....bdc...","......b.dc..",".....b...c..","....b.......","...b........","..b.........",".a..........","a...........","............","............"] },
+  datapack: { pal: { ".": null, k: "#2b2f37", g: "#7d8696", e: "#4fd18b", w: "#e8e6df" },
+    rows: ["kkkkkkkkkkkk","kggggggggggk","kgkkkkkkkkgk","kgkekkkkkkgk","kgkkekkkkkgk","kgkkkekkkkgk","kgkkekkkkkgk","kgkekkwwwkgk","kgkkkkkkkkgk","kggggggggggk","kkkkkkkkkkkk","............"] }
+};
+function paintRows(canvas, rows, pal) {
+  const h = rows.length, w = Math.max(...rows.map(r => r.length));
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, w, h);
+  rows.forEach((r, y) => [...r].forEach((ch, x) => {
+    const col = pal[ch];
+    if (col) { ctx.fillStyle = col; ctx.fillRect(x, y, 1, 1); }
+  }));
+}
+paintRows(document.getElementById("logo"), ICONS.logo.rows, ICONS.logo.pal);
+document.querySelectorAll("canvas[data-icon]").forEach(c => { const i = ICONS[c.dataset.icon]; paintRows(c, i.rows, i.pal); });
+
+/* ---------- Versionen und was sich zwischen ihnen ändert ---------- */
+// pf = Datapack pack_format, java = nötige Java-Version für Mods
+const VERSIONS = [
+  { v: "1.21.8", pf: 81, java: 21 },
+  { v: "1.21.7", pf: 81, java: 21 },
+  { v: "1.21.6", pf: 80, java: 21 },
+  { v: "1.21.5", pf: 71, java: 21 },
+  { v: "1.21.4", pf: 61, java: 21 },
+  { v: "1.21.3", pf: 57, java: 21 },
+  { v: "1.21.1", pf: 48, java: 21 },
+  { v: "1.20.6", pf: 41, java: 21 },
+  { v: "1.20.4", pf: 26, java: 17 },
+  { v: "1.20.2", pf: 18, java: 17 },
+  { v: "1.20.1", pf: 15, java: 17 },
+  { v: "1.19.4", pf: 12, java: 17 },
+  { v: "1.19.2", pf: 10, java: 17 },
+  { v: "1.18.2", pf: 9, java: 17 },
+  { v: "1.17.1", pf: 7, java: 16 },
+  { v: "1.16.5", pf: 6, java: 8 }
+];
+const PF = Object.fromEntries(VERSIONS.map(x => [x.v, x.pf]));
+function cmpVer(a, b) {
+  const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
+  return 0;
+}
+const atLeast = (v, min) => cmpVer(v, min) >= 0;
+function vinfo(v) {
+  const x = VERSIONS.find(e => e.v === v) || VERSIONS[0];
+  return {
+    ...x,
+    singular: atLeast(v, "1.21"),          // Datapack-Ordner in Einzahl
+    components: atLeast(v, "1.20.5"),      // Item-Komponenten statt NBT
+    snbtText: atLeast(v, "1.21.5"),        // Textkomponenten als SNBT statt JSON-Text
+    identOf: atLeast(v, "1.21"),           // Identifier.of(...)
+    regKeySettings: atLeast(v, "1.21.2"),  // registryKey in Item/Block-Settings
+    itemDefs: atLeast(v, "1.21.4"),        // assets/<modid>/items/*.json
+    newRegistries: atLeast(v, "1.19.3")    // Registries.ITEM + ItemGroupEvents
+  };
+}
+
+/* ---------- Wissen der KI: Regeln pro Projektart ---------- */
+const FORMAT = `AUSGABEFORMAT (exakt einhalten, die Werkstatt liest deine Antwort maschinell):
+@@PROJEKT: <kurzer Name des Projekts>
+@@INFO: <ein Satz auf Deutsch, was das Projekt macht>
+@@DATEI: <relativer/pfad/datei.ext>
+<kompletter Inhalt der Datei>
+@@ENDE
+... (weitere @@DATEI-Blöcke) ...
+@@BILD: <relativer/pfad/bild.png>
+PALETTE: .=transparent a=#RRGGBB b=#RRGGBB c=#RRGGBB
+<genau 16 Zeilen mit je genau 16 Zeichen; jedes Zeichen ist ein Palettenzeichen>
+@@ENDE
+@@ANLEITUNG
+<nummerierte, kurze Schritte auf Deutsch, verständlich für Jugendliche: was installieren, wohin kopieren, wie benutzen>
+@@FERTIG
+
+Strenge Regeln:
+- Kein Text vor @@PROJEKT und keine Markdown-Codeblöcke (niemals \`\`\`).
+- Jede Datei ist VOLLSTÄNDIG: keine Platzhalter, kein "TODO", kein "...", nichts gekürzt.
+- Pfade nur mit / und ohne führenden Schrägstrich.
+- Nur @@BILD für PNG-Texturen (16x16 Pixelkunst im Minecraft-Stil, mit Schattierung: 4-7 Farben, dunkler Rand, Lichtkante oben links).
+- Schreibe zuerst die wichtigsten Dateien. Halte das Projekt so klein wie möglich, aber so vollständig wie nötig.
+- Kommentare im Code auf Deutsch, kurz.`;
+
+const RULES = {
+  shader: (v) => `PROJEKTART: Shaderpack für Iris und OptiFine (Minecraft ${v}).
+Fachregeln:
+- Alle Shader-Dateien liegen im Ordner shaders/ (z.B. shaders/final.fsh). Die ZIP-Wurzel enthält direkt den Ordner shaders/.
+- Verwende überall "#version 120" mit den klassischen Built-ins (ftransform(), gl_MultiTexCoord0, gl_MultiTexCoord1, gl_Color, gl_TextureMatrix, texture2D, gl_FragData[0], varying). Kein in/out, kein texture(), kein layout. Das läuft auf Iris UND OptiFine.
+- Jedes Programm braucht ein Paar .vsh + .fsh mit gleichen varying-Namen und Typen.
+- Typische Programme: gbuffers_basic, gbuffers_textured, gbuffers_textured_lit, gbuffers_terrain, gbuffers_water, gbuffers_skybasic, gbuffers_skytextured, gbuffers_entities, gbuffers_hand, gbuffers_weather, composite, final. Fehlende gbuffers fallen automatisch auf gbuffers_textured_lit/gbuffers_textured/gbuffers_basic zurück. Schreibe nur Programme, die der Effekt braucht.
+- In gbuffers: Farbe = texture2D(texture, texcoord) * glcolor * texture2D(lightmap, lmcoord), mit lmcoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy. Alpha-Test: if (color.a < 0.1) discard;
+- Schreibe in Buffer mit dem Kommentar /* DRAWBUFFERS:0 */ (bzw. 01, 012 ...) und gl_FragData[n]. In final.fsh verwende gl_FragColor oder gl_FragData[0].
+- Nutze nur echte Uniform-Namen und deklariere jede, die du benutzt: colortex0..colortex7, depthtex0, depthtex1, gcolor, gnormal, lightmap, texture, shadowtex0, shadowtex1, viewWidth, viewHeight, frameTimeCounter, worldTime, sunPosition, moonPosition, shadowLightPosition, upPosition, cameraPosition, rainStrength, wetness, isEyeInWater, eyeBrightnessSmooth, near, far, gbufferProjection, gbufferProjectionInverse, gbufferModelView, gbufferModelViewInverse, shadowProjection, shadowModelView, fogColor, skyColor.
+- GLSL 1.20 Fallen vermeiden: Gleitkommazahlen immer mit Punkt schreiben (1.0 statt 1), kein int*float-Mischen, keine Arrays-Initialisierer, keine Funktionen nach ihrer Benutzung ohne Prototyp, Schleifen mit konstanten Grenzen.
+- Schatten (shadow.vsh/fsh, shadowMapResolution, Verzerrung) nur, wenn verlangt – dann sorgfältig mit const int shadowMapResolution = 2048; und const float shadowDistance = 120.0;
+- Einstellungen: #define NAME wert // [w1 w2 w3] am Dateianfang. Lege shaders/shaders.properties mit screen=... und sliders=... an sowie shaders/lang/en_us.lang und shaders/lang/de_de.lang (option.NAME=Anzeigename).
+- Wenn du mc_Entity brauchst (Wasser, Blätter, Pflanzen erkennen), lege shaders/block.properties an, z.B. block.10001=minecraft:water und block.10002=minecraft:oak_leaves minecraft:birch_leaves, und prüfe im Shader auf diese Zahlen (mc_Entity.x == 10001.0). Ohne block.properties ist mc_Entity.x überall -1.
+- Schreibe sauberes GLSL, das auch strenge Compiler akzeptieren (die Werkstatt testet den Shader live in einer WebGL-Vorschau).
+- Anleitung: Iris (mit Fabric) oder OptiFine installieren, ZIP unverändert in .minecraft/shaderpacks legen, im Spiel unter Videoeinstellungen > Shaderpacks auswählen.`,
+
+  mod: (v) => {
+    const I = vinfo(v);
+    const java = String(I.java);
+    const folders = I.singular ? "data/<modid>/recipe/ und data/<modid>/loot_table/blocks/" : "data/<modid>/recipes/ und data/<modid>/loot_tables/blocks/";
+    const ident = I.identOf ? 'Identifier.of(MOD_ID, "name")' : 'new Identifier(MOD_ID, "name")';
+    const reg = I.newRegistries
+      ? "Registrieren mit Registry.register(Registries.ITEM, id, item) usw. Items mit ItemGroupEvents.modifyEntriesEvent in eine Item-Gruppe einfügen."
+      : "Registrieren mit Registry.register(Registry.ITEM, id, item) usw. (alte Registry-Klasse, net.minecraft.util.registry.Registry). Item-Gruppe direkt in den Settings: new Item.Settings().group(ItemGroup.MISC).";
+    const lines = [];
+    if (I.regKeySettings) lines.push(`- Ab 1.21.2: Items und Blöcke brauchen beim Erstellen ihren RegistryKey in den Settings: new Item.Settings().registryKey(RegistryKey.of(RegistryKeys.ITEM, id)) bzw. AbstractBlock.Settings.create().registryKey(RegistryKey.of(RegistryKeys.BLOCK, id)).`);
+    if (I.itemDefs) lines.push(`- Ab 1.21.4: Zusätzlich zu models/item/*.json braucht jedes Item eine Item-Definition in assets/<modid>/items/<name>.json: {"model":{"type":"minecraft:model","model":"<modid>:item/<name>"}}.`);
+    if (I.components) lines.push(`- Ab 1.20.5 nutzen Items Datenkomponenten (DataComponentTypes) statt NBT; Essen über FoodComponent bzw. .food(...) in den Settings, passend zu ${v}.`);
+    lines.push(`- Item-Modelle in assets/<modid>/models/item/<name>.json (parent minecraft:item/generated oder handheld), Block-Modelle in models/block/, Blockstates in assets/<modid>/blockstates/.`);
+    const extra = lines.join("\n");
+    return `PROJEKTART: Fabric-Mod (Minecraft ${v}, Java ${java}), als komplettes Gradle-Projekt.
+Fachregeln:
+- Pflichtdateien: build.gradle (Plugin fabric-loom), settings.gradle (pluginManagement mit maven https://maven.fabricmc.net/ und gradlePluginPortal), gradle.properties (minecraft_version, yarn_mappings, loader_version, loom_version, fabric_version, mod_version, maven_group, archives_base_name), gradle/wrapper/gradle-wrapper.properties (distributionUrl auf eine Gradle-Version, die zur Loom-Version passt), src/main/resources/fabric.mod.json, Java-Klassen unter src/main/java/<paket>/.
+- Benutze nur Versionsnummern (Loom, Yarn, Loader, Fabric API, Gradle), bei denen du sicher bist, dass sie für Minecraft ${v} existieren. Lieber eine etwas ältere, sichere Version.
+- Yarn-Mappings und Fabric API (Abhängigkeit "fabric-api" in fabric.mod.json, Java >=${java}, minecraft ~${v}).
+- Mod-ID: nur Kleinbuchstaben und Unterstriche. Paketname passend, z.B. com.schmiede.<modid>. Der Einstiegspunkt in fabric.mod.json muss exakt auf eine existierende Klasse zeigen, die ModInitializer implementiert. Clientcode (Rendering, Tasten) gehört in einen eigenen "client"-Einstiegspunkt.
+- Identifier: ${ident}. ${reg}
+${extra}
+- Rezepte und Loot-Tables als JSON in ${folders} (keine Datengenerierung, alles von Hand).
+- Übersetzungen: assets/<modid>/lang/en_us.json und de_de.json.
+- Jede verwendete Textur als @@BILD (z.B. src/main/resources/assets/<modid>/textures/item/<name>.png). Ein Mod-Icon unter src/main/resources/assets/<modid>/icon.png und in fabric.mod.json eintragen.
+- Achte auf korrekte Imports für genau diese Version. Kein Mixin, wenn es auch ohne geht.
+- Anleitung: Java ${java} (z.B. Temurin) und IntelliJ IDEA Community installieren, entpackten Ordner mit "Open" öffnen, Gradle laden lassen, im Gradle-Fenster "build" (oder "runClient" zum Testen) starten, die Datei aus build/libs (ohne -sources) zusammen mit Fabric API in .minecraft/mods legen, mit dem Fabric Loader starten.`;
+  },
+
+  datapack: (v) => {
+    const I = vinfo(v);
+    const fmt = I.pf;
+    const singular = I.singular;
+    return `PROJEKTART: Datapack (Minecraft ${v}), läuft ohne Mods.
+Fachregeln:
+- pack.mcmeta in der ZIP-Wurzel: {"pack":{"pack_format":${fmt},"description":"..."}}.
+- Ordnernamen für ${v}: ${singular
+      ? "EINZAHL – data/<ns>/function/, data/minecraft/tags/function/load.json und tick.json, advancement/, recipe/, loot_table/, predicate/, item_modifier/."
+      : "MEHRZAHL – data/<ns>/functions/, data/minecraft/tags/functions/load.json und tick.json, advancements/, recipes/, loot_tables/, predicates/, item_modifiers/."}
+- Namespace: Kleinbuchstaben/Unterstriche, z.B. schmiede.
+- .mcfunction: ein Befehl pro Zeile, ohne führenden Schrägstrich, Kommentare nur als ganze Zeile mit #. Befehlssyntax exakt für ${v} (${I.components ? "Items mit Komponenten, z.B. diamond_sword[enchantments={levels:{\"minecraft:sharpness\":5}}]" : "Items mit NBT, z.B. diamond_sword{Enchantments:[{id:\"sharpness\",lvl:5s}]}"}).${I.snbtText ? "\n- Ab 1.21.5 werden Textkomponenten in Befehlen und Komponenten als SNBT geschrieben, z.B. custom_name={text:\"Held\",color:\"gold\"} statt als JSON-Text in Anführungszeichen. tellraw nimmt weiterhin Textkomponenten." : ""}${atLeast(v, "1.20.2") ? "" : "\n- Funktionen mit Makros ($-Zeilen) gibt es erst ab 1.20.2 – hier nicht benutzen."}
+- load-Funktion: Scoreboards anlegen und eine tellraw-Nachricht "Datapack geladen". tick-Funktion nur wenn nötig und sparsam (Selektoren mit Tags/Scores eingrenzen).
+- Alle JSON-Dateien müssen gültiges JSON sein.
+- Anleitung: ZIP in den Ordner .minecraft/saves/<Welt>/datapacks legen (oder beim Erstellen der Welt unter "Datenpakete"), dann /reload, mit /datapack list prüfen.`;
+  }
+};
+
+const IDEAS = {
+  shader: ["Warmes Abendlicht mit leuchtendem Himmel und sanfter Vignette", "Wasser, das blauer ist und in der Sonne glitzert", "Comic-Look mit dicken schwarzen Umrissen", "Gruseliger Nebel mit grünlichem Licht in Höhlen"],
+  mod: ["Rubin-Erz, das Rubine droppt, plus Rubin-Schwert und Rubin-Spitzhacke", "Zauberstab, der beim Rechtsklick Feuerbälle schießt", "Pizza als Essen, die 10 Sekunden Speed gibt", "Ein Leuchtblock, der so hell wie Glowstone ist und aus Glas gecraftet wird"],
+  datapack: ["Jeder neue Spieler bekommt ein Starter-Kit", "Zombies tragen zufällige Rüstung", "Ein Spielzeit-Zähler in der Seitenleiste", "Schneebälle machen 2 Herzen Schaden"]
+};
+const KIND_LABEL = { shader: "Shader", mod: "Fabric-Mod", datapack: "Datapack" };
+
+/* ---------- Beispielprojekt (damit die Werkbank nicht leer ist) ---------- */
+const EXAMPLE_RAW = `@@PROJEKT: Warmes Abendlicht
+@@INFO: Ein kleiner Beispiel-Shader: wärmere Farben, kräftigere Sättigung und eine weiche Vignette am Bildrand.
+@@DATEI: shaders/final.vsh
+#version 120
+// Bildschirm-Viereck durchreichen
+varying vec2 texcoord;
+
+void main() {
+    gl_Position = ftransform();
+    texcoord = gl_MultiTexCoord0.xy;
+}
+@@ENDE
+@@DATEI: shaders/final.fsh
+#version 120
+// Einstellungen (im Spiel änderbar)
+#define SATURATION 1.25 // [1.0 1.1 1.25 1.4 1.6]
+#define WARMTH 0.15 // [0.0 0.05 0.1 0.15 0.2 0.3]
+#define VIGNETTE 0.35 // [0.0 0.2 0.35 0.5]
+
+uniform sampler2D colortex0;
+varying vec2 texcoord;
+
+void main() {
+    vec3 color = texture2D(colortex0, texcoord).rgb;
+
+    // Sättigung
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    color = mix(vec3(luma), color, SATURATION);
+
+    // Wärmer: mehr Rot, weniger Blau
+    color *= vec3(1.0 + WARMTH, 1.0 + WARMTH * 0.4, 1.0 - WARMTH * 0.6);
+
+    // Vignette
+    vec2 d = texcoord - 0.5;
+    color *= 1.0 - VIGNETTE * dot(d, d) * 2.0;
+
+    gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+}
+@@ENDE
+@@DATEI: shaders/shaders.properties
+screen=SATURATION WARMTH VIGNETTE
+sliders=SATURATION WARMTH VIGNETTE
+@@ENDE
+@@DATEI: shaders/lang/de_de.lang
+option.SATURATION=Sättigung
+option.WARMTH=Wärme
+option.VIGNETTE=Vignette
+@@ENDE
+@@DATEI: shaders/lang/en_us.lang
+option.SATURATION=Saturation
+option.WARMTH=Warmth
+option.VIGNETTE=Vignette
+@@ENDE
+@@ANLEITUNG
+Installiere Iris (mit Fabric) oder OptiFine für deine Minecraft-Version.
+Lade die ZIP herunter und lege sie unverändert in den Ordner .minecraft/shaderpacks.
+Starte Minecraft und öffne Optionen > Grafik > Shaderpakete.
+Wähle "Warmes Abendlicht" aus und klicke auf Fertig.
+Unter "Shader-Einstellungen" kannst du Sättigung, Wärme und Vignette anpassen.
+@@FERTIG`;
+
+/* ---------- Parser für das @@-Format ---------- */
+function cleanPath(p) {
+  return p.trim().replace(/\\/g, "/").replace(/^\.?\/+/, "").split("/").filter(s => s && s !== "." && s !== "..").join("/");
+}
+function stripFences(s) {
+  return s.replace(/^\s*```[^\n]*\n/, "").replace(/\n```\s*$/, "");
+}
+function parse(text) {
+  const out = { name: "", info: "", files: [], guide: [], done: false };
+  let cur = null, inGuide = false;
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    const t = line.trim();
+    if (t.startsWith("@@PROJEKT:")) { out.name = t.slice(10).trim(); continue; }
+    if (t.startsWith("@@INFO:")) { out.info = t.slice(7).trim(); continue; }
+    if (t.startsWith("@@DATEI:") || t.startsWith("@@BILD:")) {
+      const isImg = t.startsWith("@@BILD:");
+      const path = cleanPath(t.slice(isImg ? 7 : 8));
+      cur = { path, type: isImg ? "image" : "text", lines: [], closed: false };
+      const old = out.files.findIndex(f => f.path === path);
+      if (old >= 0) out.files.splice(old, 1);
+      out.files.push(cur); inGuide = false; continue;
+    }
+    if (t === "@@ENDE") { if (cur) cur.closed = true; cur = null; continue; }
+    if (t === "@@ANLEITUNG") { cur = null; inGuide = true; continue; }
+    if (t === "@@FERTIG") { out.done = true; cur = null; inGuide = false; continue; }
+    if (cur) cur.lines.push(line);
+    else if (inGuide && t) out.guide.push(t.replace(/^\d+[.)]\s*/, "").replace(/^[-*]\s*/, ""));
+  }
+  for (const f of out.files) {
+    f.content = stripFences(f.lines.join("\n")).replace(/\s+$/, "") + (f.type === "text" ? "\n" : "");
+    delete f.lines;
+    if (f.type === "image") f.pixels = parsePixels(f.content);
+  }
+  out.files = out.files.filter(f => f.path);
+  return out;
+}
+function parsePixels(src) {
+  const lines = src.split("\n").map(l => l.replace(/\r$/, ""));
+  const pal = {};
+  const rows = [];
+  for (const l of lines) {
+    if (/^\s*PALETTE\s*:/i.test(l)) {
+      for (const tok of l.replace(/^\s*PALETTE\s*:/i, "").trim().split(/\s+/)) {
+        const m = tok.match(/^(.)=(#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?|transparent|none)$/);
+        if (m) pal[m[1]] = /^#/.test(m[2]) ? m[2] : null;
+      }
+    } else if (l.trim()) rows.push(l.trim().slice(0, 64));
+  }
+  return { pal, rows: rows.slice(0, 64) };
+}
+function serialize(p) {
+  let s = `@@PROJEKT: ${p.name}\n@@INFO: ${p.info}\n`;
+  for (const f of p.files) s += `${f.type === "image" ? "@@BILD" : "@@DATEI"}: ${f.path}\n${f.content.replace(/\n$/, "")}\n@@ENDE\n`;
+  s += "@@ANLEITUNG\n" + p.guide.map((g, i) => `${i + 1}. ${g}`).join("\n") + "\n@@FERTIG";
+  return s;
+}
+
+/* ---------- Prüfung ---------- */
+function check(p, mode, version) {
+  const res = [];
+  const paths = new Set(p.files.map(f => f.path));
+  const byPath = Object.fromEntries(p.files.map(f => [f.path, f]));
+  if (!p.files.length) return [{ level: "err", text: "Keine Dateien gefunden." }];
+  const unclosed = p.files.filter(f => !f.closed);
+  if (unclosed.length) res.push({ level: "err", text: `Unvollständig: ${unclosed.map(f => f.path).join(", ")}` });
+  const todo = p.files.filter(f => f.type === "text" && /\bTODO\b|\/\/\s*\.\.\.\s*$|^\s*\.\.\.\s*$/m.test(f.content));
+  if (todo.length) res.push({ level: "warn", text: `Platzhalter gefunden in: ${todo.map(f => f.path).join(", ")}` });
+
+  let badJson = 0;
+  for (const f of p.files) {
+    if (/\.(json|mcmeta)$/.test(f.path)) {
+      try { JSON.parse(f.content); } catch { badJson++; res.push({ level: "err", text: `Ungültiges JSON: ${f.path}` }); }
+    }
+  }
+  const jsonCount = p.files.filter(f => /\.(json|mcmeta)$/.test(f.path)).length;
+  if (jsonCount && !badJson) res.push({ level: "ok", text: `${jsonCount} JSON-Dateien sind gültig` });
+
+  for (const f of p.files.filter(f => f.type === "image")) {
+    const { rows, pal } = f.pixels;
+    const used = new Set(rows.join(""));
+    const missing = [...used].filter(c => !(c in pal));
+    if (!rows.length) res.push({ level: "err", text: `Leere Textur: ${f.path}` });
+    else if (missing.length) res.push({ level: "warn", text: `Textur ${f.path}: Farbe für „${missing.join("")}“ fehlt (wird transparent)` });
+  }
+  const imgs = p.files.filter(f => f.type === "image").length;
+  if (imgs) res.push({ level: "ok", text: `${imgs} Textur${imgs > 1 ? "en" : ""} werden als PNG gebaut` });
+
+  if (mode === "shader") {
+    const progs = p.files.filter(f => /^shaders\/[^/]+\.(fsh|vsh)$/.test(f.path));
+    if (!progs.length) res.push({ level: "err", text: "Keine .fsh/.vsh-Dateien im Ordner shaders/" });
+    const outside = p.files.filter(f => !f.path.startsWith("shaders/") && !/^(readme|license|pack\.png)/i.test(f.path));
+    if (outside.length) res.push({ level: "warn", text: `Liegt nicht in shaders/: ${outside.map(f => f.path).join(", ")}` });
+    let pairs = 0;
+    for (const f of progs) {
+      const other = f.path.replace(/\.(fsh|vsh)$/, m => m === ".fsh" ? ".vsh" : ".fsh");
+      if (!paths.has(other)) res.push({ level: "err", text: `Partner fehlt: ${other}` }); else pairs++;
+      if (!/^\s*#version\s+\d+/m.test(f.content)) res.push({ level: "warn", text: `Kein #version in ${f.path}` });
+      const vars = (src, kw) => [...src.matchAll(new RegExp(`^\\s*${kw}\\s+\\w+\\s+(\\w+)`, "gm"))].map(m => m[1]);
+      if (f.path.endsWith(".fsh") && paths.has(other)) {
+        const need = vars(f.content, "varying"), have = new Set(vars(byPath[other].content, "varying"));
+        const miss = need.filter(n => !have.has(n));
+        if (miss.length) res.push({ level: "err", text: `${f.path}: varying ${miss.join(", ")} fehlt im .vsh` });
+      }
+    }
+    if (pairs) res.push({ level: "ok", text: `${pairs / 2} Shader-Programm${pairs > 2 ? "e" : ""} mit .vsh und .fsh` });
+  }
+
+  if (mode === "mod") {
+    for (const need of ["build.gradle", "settings.gradle", "gradle.properties", "src/main/resources/fabric.mod.json"]) {
+      if (!paths.has(need)) res.push({ level: "err", text: `Fehlt: ${need}` });
+    }
+    const fmj = byPath["src/main/resources/fabric.mod.json"];
+    if (fmj) {
+      try {
+        const j = JSON.parse(fmj.content);
+        if (!/^[a-z][a-z0-9_-]{1,63}$/.test(j.id || "")) res.push({ level: "err", text: `Mod-ID „${j.id}“ ist nicht erlaubt` });
+        const entries = Object.values(j.entrypoints || {}).flat().map(e => typeof e === "string" ? e : e.value).filter(Boolean);
+        for (const e of entries) {
+          const cls = e.split("::")[0];
+          const file = "src/main/java/" + cls.replace(/\./g, "/") + ".java";
+          const alt = "src/client/java/" + cls.replace(/\./g, "/") + ".java";
+          if (paths.has(file) || paths.has(alt)) res.push({ level: "ok", text: `Einstiegspunkt ${cls.split(".").pop()} gefunden` });
+          else res.push({ level: "err", text: `Einstiegspunkt-Klasse fehlt: ${file}` });
+        }
+        if (j.icon && !paths.has("src/main/resources/" + j.icon)) res.push({ level: "warn", text: `Icon fehlt: ${j.icon}` });
+      } catch {}
+    }
+    const props = byPath["gradle.properties"]?.content || "";
+    const mc = props.match(/minecraft_version\s*=\s*(\S+)/);
+    if (mc && mc[1] !== version) res.push({ level: "warn", text: `gradle.properties nennt Minecraft ${mc[1]}, gewählt ist ${version}` });
+    if (!paths.has("gradle/wrapper/gradle-wrapper.properties")) res.push({ level: "warn", text: "gradle-wrapper.properties fehlt (IntelliJ nimmt dann seine eigene Gradle-Version)" });
+    const java = p.files.filter(f => f.path.endsWith(".java"));
+    for (const f of java) {
+      const pk = (f.content.match(/^\s*package\s+([\w.]+)\s*;/m) || [])[1];
+      const dir = f.path.replace(/^src\/(main|client)\/java\//, "").split("/").slice(0, -1).join(".");
+      if (pk && pk !== dir) res.push({ level: "err", text: `${f.path}: package ${pk} passt nicht zum Ordner` });
+    }
+    if (java.length) res.push({ level: "ok", text: `${java.length} Java-Klasse${java.length > 1 ? "n" : ""}` });
+    const textureRefs = new Set();
+    for (const f of p.files.filter(f => /assets\/[^/]+\/models\/.+\.json$/.test(f.path))) {
+      try {
+        const j = JSON.parse(f.content);
+        for (const v of Object.values(j.textures || {})) if (typeof v === "string" && !v.startsWith("minecraft:") && !v.startsWith("#") && v.includes(":")) textureRefs.add(v);
+      } catch {}
+    }
+    for (const ref of textureRefs) {
+      const [ns, rest] = ref.split(":");
+      const tp = `src/main/resources/assets/${ns}/textures/${rest}.png`;
+      if (!paths.has(tp)) res.push({ level: "warn", text: `Textur fehlt: ${tp}` });
+    }
+  }
+
+  if (mode === "datapack") {
+    const mc = byPath["pack.mcmeta"];
+    if (!mc) res.push({ level: "err", text: "pack.mcmeta fehlt in der Wurzel" });
+    else {
+      try {
+        const fmt = JSON.parse(mc.content)?.pack?.pack_format;
+        const want = PF[version];
+        if (fmt === want) res.push({ level: "ok", text: `pack_format ${fmt} passt zu ${version}` });
+        else res.push({ level: "warn", text: `pack_format ist ${fmt}, für ${version} wäre ${want} richtig` });
+      } catch {}
+    }
+    const plural = /^data\/[^/]+\/(functions|advancements|recipes|loot_tables|predicates|item_modifiers)\//;
+    const singular = /^data\/[^/]+\/(function|advancement|recipe|loot_table|predicate|item_modifier)\//;
+    const tagPl = /^data\/[^/]+\/tags\/functions\//, tagSg = /^data\/[^/]+\/tags\/function\//;
+    for (const f of p.files) {
+      const sg = vinfo(version).singular;
+      if (!sg && (singular.test(f.path) || tagSg.test(f.path))) res.push({ level: "err", text: `${f.path}: in ${version} heissen die Ordner in der Mehrzahl` });
+      if (sg && (plural.test(f.path) || tagPl.test(f.path))) res.push({ level: "err", text: `${f.path}: ab 1.21 heissen die Ordner in der Einzahl` });
+      if (f.path.endsWith(".mcfunction")) {
+        const slash = f.content.split("\n").filter(l => /^\s*\//.test(l)).length;
+        if (slash) res.push({ level: "err", text: `${f.path}: ${slash} Befehl(e) beginnen mit /` });
+      }
+    }
+    const fns = p.files.filter(f => f.path.endsWith(".mcfunction")).length;
+    if (fns) res.push({ level: "ok", text: `${fns} Funktion${fns > 1 ? "en" : ""}` });
+  }
+  if (!res.some(r => r.level !== "ok")) res.unshift({ level: "ok", text: "Keine Probleme gefunden" });
+  return res;
+}
+
+/* ---------- Zustand ---------- */
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+const state = { mode: "shader", version: "1.21.1", project: null, projMode: "shader", projVersion: "1.21.1", isExample: true, selected: 0, busy: false, ctl: null, followLast: false, rev: 0 };
+let sample = null, downloads = null;
+
+function setMode(m) {
+  state.mode = m;
+  document.querySelectorAll(".mode").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === m)));
+  const chips = $("chips"); chips.textContent = "";
+  for (const idea of IDEAS[m]) {
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.textContent = idea;
+    b.onclick = () => { $("desc").value = idea; saveDraft(); $("desc").focus(); };
+    chips.append(b);
+  }
+  $("desc").value = store.get("draft-" + m) || "";
+  $("desc").placeholder = { shader: "Zum Beispiel: Ein Shader mit warmem Abendlicht, leuchtendem Himmel und Wasser, das glitzert.", mod: "Zum Beispiel: Ein neues Erz namens Rubin mit Schwert, Spitzhacke und Rüstung.", datapack: "Zum Beispiel: Wenn man stirbt, behält man seine Items, verliert aber die Hälfte der Level." }[m];
+}
+function saveDraft() { store.set("draft-" + state.mode, $("desc").value); }
+
+/* ---------- Anzeige ---------- */
+function setStatus(kind, text) {
+  $("status").className = "status " + kind;
+  $("status-text").textContent = text;
+}
+function renderProject(writing) {
+  const p = state.project;
+  $("kind-pill").textContent = KIND_LABEL[state.projMode] + " · " + state.projVersion;
+  $("example-pill").hidden = !state.isExample;
+  $("p-name").textContent = p.name || (writing ? "Wird gebaut …" : "Ohne Namen");
+  $("p-info").textContent = p.info || "";
+
+  const list = $("files"); list.textContent = "";
+  if (!p.files.length) {
+    const d = document.createElement("div"); d.className = "empty-files";
+    d.textContent = writing ? "Die erste Datei kommt gleich …" : "Noch keine Dateien.";
+    list.append(d);
+  }
+  if (state.followLast && p.files.length) state.selected = p.files.length - 1;
+  if (state.selected >= p.files.length) state.selected = 0;
+  p.files.forEach((f, i) => {
+    const b = document.createElement("button");
+    b.className = "file" + (writing && !f.closed ? " writing" : ""); b.type = "button";
+    b.setAttribute("aria-current", String(i === state.selected));
+    const parts = f.path.split("/");
+    const sp = document.createElement("span"); sp.className = "p";
+    const dir = document.createElement("i"); dir.textContent = parts.slice(0, -1).join("/") + (parts.length > 1 ? "/" : "");
+    const nm = document.createElement("b"); nm.textContent = parts[parts.length - 1];
+    sp.append(dir, nm);
+    const n = document.createElement("span"); n.className = "n";
+    n.textContent = f.type === "image" ? "PNG" : f.content.split("\n").length - 1 + " Z.";
+    b.append(sp, n);
+    b.onclick = () => { state.selected = i; state.followLast = false; renderProject(state.busy); };
+    list.append(b);
+  });
+  renderViewer();
+
+  const checks = $("checks"); checks.textContent = "";
+  const results = writing ? [{ level: "warn", text: "Prüfung startet, sobald alles fertig ist." }] : check(p, state.projMode, state.projVersion);
+  for (const r of results) { const li = document.createElement("li"); li.className = r.level; li.textContent = r.text; checks.append(li); }
+
+  const guide = $("guide"); guide.textContent = "";
+  for (const g of p.guide) { const li = document.createElement("li"); li.textContent = g; guide.append(li); }
+  if (!p.guide.length) { const li = document.createElement("li"); li.textContent = writing ? "Kommt am Ende." : "Keine Anleitung erhalten."; guide.append(li); }
+
+  const ready = !writing && p.files.length > 0;
+  $("zip").disabled = !ready;
+  $("do-change").disabled = !ready || !sample;
+  $("do-fix").disabled = !ready || !sample;
+  updatePreview(writing);
+}
+function renderViewer() {
+  const p = state.project, f = p.files[state.selected];
+  const body = $("v-body"); body.textContent = "";
+  $("v-path").textContent = f ? f.path : "";
+  $("copy").hidden = !f || f.type === "image";
+  if (!f) return;
+  if (f.type === "image") {
+    const wrap = document.createElement("div"); wrap.className = "pixel-view";
+    const c = document.createElement("canvas"); paintRows(c, f.pixels.rows, f.pixels.pal);
+    const t = document.createElement("p"); t.className = "hint";
+    t.textContent = `${c.width}×${c.height} Pixel. Wird beim Herunterladen als PNG-Datei gespeichert.`;
+    wrap.append(c, t); body.append(wrap); return;
+  }
+  const pre = document.createElement("pre"); pre.className = "code";
+  const lines = f.content.replace(/\n$/, "").split("\n");
+  const frag = document.createDocumentFragment();
+  lines.forEach((l, i) => { const s = document.createElement("span"); s.className = "l"; s.dataset.n = i + 1; s.textContent = l || " "; frag.append(s); });
+  pre.append(frag); body.append(pre);
+  if (state.busy && state.followLast) pre.scrollTop = pre.scrollHeight;
+}
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+/* ---------- KI-Aufruf ---------- */
+const ERRORS = {
+  not_granted: "Du hast der Seite nicht erlaubt, Claude zu benutzen. Lade die Seite neu, um es nochmal zu erlauben.",
+  sampling_disabled: "Claude ist für dieses Konto hier nicht verfügbar.",
+  rate_limited: "Gerade zu viele Anfragen oder dein Nutzungslimit ist erreicht. Warte ein bisschen und versuche es dann nochmal.",
+  session_expired: "Du bist abgemeldet. Melde dich bei Claude neu an.",
+  refused: "Claude wollte das so nicht bauen. Formuliere die Beschreibung anders.",
+  prompt_too_large: "Das Projekt ist zu gross zum Mitschicken. Beschreibe die Änderung neu als eigenes Projekt.",
+  empty_completion: "Es kam keine Antwort. Versuche es mit einer kürzeren Beschreibung."
+};
+async function run(prompt, label) {
+  if (!sample || state.busy) return;
+  state.busy = true; state.followLast = true;
+  state.ctl = new AbortController();
+  const before = { project: state.project, projMode: state.projMode, projVersion: state.projVersion, isExample: state.isExample };
+  state.projMode = state.mode; state.projVersion = state.version; state.isExample = false;
+  state.project = { name: "", info: "", files: [], guide: [] };
+  $("go").hidden = true; $("stop").hidden = false;
+  setStatus("work", label + " Claude denkt nach …");
+  renderProject(true);
+  let lastText = "";
+  try {
+    const { text, truncated } = await sample(prompt, {
+      modelTier: $("quality").value, cache: false, signal: state.ctl.signal,
+      onText: ({ text }) => {
+        lastText = text;
+        state.project = parse(text);
+        const f = state.project.files[state.project.files.length - 1];
+        setStatus("work", f && !f.closed ? `Schreibt ${f.path} …` : state.project.guide.length ? "Schreibt die Anleitung …" : `${state.project.files.length} Dateien fertig, weiter geht's …`);
+        renderProject(true);
+      }
+    });
+    lastText = text;
+    state.project = parse(text);
+    finish(truncated ? "warn" : "ok", truncated ? "Die Antwort wurde abgeschnitten. Unvollständige Dateien sind markiert. Bitte um ein kleineres Projekt." : `Fertig: ${state.project.files.length} Dateien gebaut und geprüft.`);
+  } catch (e) {
+    if (e && e.text) { lastText = e.text; state.project = parse(e.text); }
+    if (e && e.code === "cancelled") finish("err", "Gestoppt. Was schon fertig war, bleibt hier.");
+    else if (e && e.code === "not_granted") { hideAI(); finish("err", ERRORS.not_granted); }
+    else finish("err", (e && ERRORS[e.code]) || "Die Verbindung ist abgebrochen. Versuche es nochmal.");
+    if (!state.project.files.length) Object.assign(state, before);
+  }
+  if (state.project.files.length && !state.isExample) store.set("last-project", JSON.stringify({ raw: lastText, mode: state.projMode, version: state.projVersion }));
+  state.rev++;
+  renderProject(false);
+}
+function finish(kind, msg) {
+  state.busy = false; state.followLast = false; state.ctl = null;
+  $("go").hidden = false; $("stop").hidden = true;
+  setStatus(kind === "warn" ? "err" : kind, msg);
+  if (state.project.files.length) state.selected = Math.min(state.selected, state.project.files.length - 1);
+}
+function hideAI() {
+  sample = null;
+  $("go").disabled = true; $("no-ai").hidden = false;
+}
+
+function buildNew() {
+  const desc = $("desc").value.trim();
+  if (!desc) { toast("Schreib zuerst, was gebaut werden soll."); $("desc").focus(); return; }
+  const prompt = `Du bist die Block-Schmiede, eine KI, die nur dafür gebaut ist, perfekte Minecraft-Shaderpacks, Fabric-Mods und Datapacks zu erstellen. Du kennst Minecraft-Modding bis ins letzte Detail und lieferst Dateien, die beim ersten Versuch funktionieren.
+
+${RULES[state.mode](state.version)}
+
+${FORMAT}
+
+AUFTRAG DES SPIELERS:
+${desc}`;
+  run(prompt, "");
+}
+function buildChange(kind) {
+  const p = state.project; if (!p || !p.files.length) return;
+  const field = kind === "fix" ? $("errlog") : $("change");
+  const txt = field.value.trim();
+  if (!txt) { toast(kind === "fix" ? "Füge zuerst die Fehlermeldung ein." : "Schreib zuerst, was anders sein soll."); field.focus(); return; }
+  state.mode = state.projMode; state.version = state.projVersion;
+  $("version").value = state.version;
+  document.querySelectorAll(".mode").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
+  const task = kind === "fix"
+    ? `FEHLERMELDUNG BEIM SPIELER:\n${txt.slice(0, 20000)}\n\nFinde die genaue Ursache und repariere das Projekt. Erkläre in @@INFO in einem Satz, was falsch war und was du geändert hast.`
+    : `GEWÜNSCHTE ÄNDERUNG:\n${txt}\n\nBaue die Änderung ein. Erkläre in @@INFO in einem Satz, was neu ist.`;
+  const prompt = `Du bist die Block-Schmiede, eine KI, die nur dafür gebaut ist, perfekte Minecraft-Shaderpacks, Fabric-Mods und Datapacks zu erstellen.
+
+${RULES[state.mode](state.version)}
+
+${FORMAT}
+
+AKTUELLES PROJEKT (alle Dateien im selben Format):
+${serialize(p)}
+
+${task}
+
+Gib danach das KOMPLETTE Projekt mit ALLEN Dateien neu aus, auch die unveränderten, damit nichts verloren geht.`;
+  run(prompt, kind === "fix" ? "Fehler-Doktor:" : "Änderung:").then(() => { if (state.project.files.length) field.value = ""; });
+}
+
+/* ---------- ZIP ---------- */
+function slug(s) { return (s || "projekt").toLowerCase().replace(/[äöü]/g, c => ({ ä: "ae", ö: "oe", ü: "ue" })[c]).replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "projekt"; }
+function pngBlob(f) {
+  return new Promise(res => { const c = document.createElement("canvas"); paintRows(c, f.pixels.rows, f.pixels.pal); c.toBlob(b => res(b), "image/png"); });
+}
+async function downloadZip() {
+  const p = state.project; if (!p || !p.files.length) return;
+  if (typeof JSZip === "undefined") { toast("Der ZIP-Packer konnte nicht geladen werden."); return; }
+  const zip = new JSZip();
+  const name = slug(p.name);
+  const root = state.projMode === "mod" ? zip.folder(name) : zip;
+  for (const f of p.files) {
+    if (f.type === "image") root.file(f.path, await pngBlob(f));
+    else root.file(f.path, f.content);
+  }
+  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+  await saveFile(blob, `${name}-${state.projMode}-${state.projVersion}.zip`);
+}
+
+async function saveFile(blob, filename) {
+  if (!downloads && !window.claude) {
+    // Normale Webseite (z.B. GitHub Pages): ganz normaler Browser-Download
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast("Heruntergeladen: " + filename);
+    return;
+  }
+  if (!downloads) { toast("Speichern geht nur, wenn die Seite in Claude geöffnet ist."); return; }
+  try { await downloads.save({ filename, data: blob }); toast("Gespeichert: " + filename); }
+  catch (e) {
+    if (e && e.code === "declined") return;
+    toast(e && e.code === "rate_limited" ? "Es ist schon ein Speichern-Fenster offen." : "Speichern hat nicht geklappt.");
+  }
+}
+
+/* =====================================================================
+   VORSCHAU
+   Shader: eine kleine Minecraft-Welt in WebGL2, die die ECHTEN Dateien
+   des Shaderpacks ausführt (gbuffers, deferred, composite, final),
+   so wie Iris sie aufruft. Mods: Inventar-Bild. Datapacks: Chat.
+   ===================================================================== */
+const Preview = (() => {
+  const canvas = $("pv-canvas");
+  let gl = null;
+  try { gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true, antialias: false, alpha: false }); } catch {}
+  const pv = { time: 11800, rain: 0, orbit: true, yaw: 0.9, pitch: 0.42, dist: 30, t0: performance.now(), frames: 0, active: false, pack: null, rev: -1, lastNow: 0, dragging: false, skyB: -1 };
+  const api = { rev: -1 };
+  let raf = 0, FV = {}, MX = null, RT = null, T = null, MESH = null, project = null, projVersion = "";
+
+  /* ---------- Mathe (Spalten-Matrizen wie OpenGL) ---------- */
+  const M4 = {
+    I: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
+    mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; },
+    persp(fy, asp, n, f) { const t = 1 / Math.tan(fy / 2); return new Float32Array([t / asp,0,0,0, 0,t,0,0, 0,0,(f + n) / (n - f),-1, 0,0,2 * f * n / (n - f),0]); },
+    ortho(l, r, b, t, n, f) { return new Float32Array([2 / (r - l),0,0,0, 0,2 / (t - b),0,0, 0,0,-2 / (f - n),0, -(r + l) / (r - l),-(t + b) / (t - b),-(f + n) / (f - n),1]); },
+    trans(x, y, z) { const m = M4.I(); m[12] = x; m[13] = y; m[14] = z; return m; },
+    rotZ(a) { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1]); },
+    look(eye, at, up) {
+      let zx = eye[0] - at[0], zy = eye[1] - at[1], zz = eye[2] - at[2]; let l = Math.hypot(zx, zy, zz) || 1; zx /= l; zy /= l; zz /= l;
+      let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx; l = Math.hypot(xx, xy, xz) || 1; xx /= l; xy /= l; xz /= l;
+      const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+      return new Float32Array([xx,yx,zx,0, xy,yy,zy,0, xz,yz,zz,0, 0,0,0,1]);
+    },
+    inv(a) {
+      const o = new Float32Array(16);
+      const [a00,a01,a02,a03,a10,a11,a12,a13,a20,a21,a22,a23,a30,a31,a32,a33] = a;
+      const b00=a00*a11-a01*a10,b01=a00*a12-a02*a10,b02=a00*a13-a03*a10,b03=a01*a12-a02*a11,b04=a01*a13-a03*a11,b05=a02*a13-a03*a12,b06=a20*a31-a21*a30,b07=a20*a32-a22*a30,b08=a20*a33-a23*a30,b09=a21*a32-a22*a31,b10=a21*a33-a23*a31,b11=a22*a33-a23*a32;
+      let d = b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06; if (!d) return M4.I(); d = 1 / d;
+      o[0]=(a11*b11-a12*b10+a13*b09)*d; o[1]=(a02*b10-a01*b11-a03*b09)*d; o[2]=(a31*b05-a32*b04+a33*b03)*d; o[3]=(a22*b04-a21*b05-a23*b03)*d;
+      o[4]=(a12*b08-a10*b11-a13*b07)*d; o[5]=(a00*b11-a02*b08+a03*b07)*d; o[6]=(a32*b02-a30*b05-a33*b01)*d; o[7]=(a20*b05-a22*b02+a23*b01)*d;
+      o[8]=(a10*b10-a11*b08+a13*b06)*d; o[9]=(a01*b08-a00*b10-a03*b06)*d; o[10]=(a30*b04-a31*b02+a33*b00)*d; o[11]=(a21*b02-a20*b04-a23*b00)*d;
+      o[12]=(a11*b07-a10*b09-a12*b06)*d; o[13]=(a00*b09-a01*b07+a02*b06)*d; o[14]=(a31*b01-a30*b03-a32*b00)*d; o[15]=(a20*b03-a21*b01+a22*b00)*d;
+      return o;
+    },
+    m3(m) { return new Float32Array([m[0],m[1],m[2], m[4],m[5],m[6], m[8],m[9],m[10]]); },
+    dir(m, v) { return [m[0]*v[0]+m[4]*v[1]+m[8]*v[2], m[1]*v[0]+m[5]*v[1]+m[9]*v[2], m[2]*v[0]+m[6]*v[1]+m[10]*v[2]]; }
+  };
+  const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const mix = (a, b, t) => a + (b - a) * t;
+  const mix3 = (a, b, t) => a.map((v, i) => mix(v, b[i], t));
+  const rng = seed => () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+
+  /* ---------- Die Mini-Welt ---------- */
+  const N = 40, H = 26, WATER = 7;
+  const B = { AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, WATER: 5, LOG: 6, LEAVES: 7, PLANT: 8 };
+  const OPAQUE = new Set([B.GRASS, B.DIRT, B.STONE, B.SAND, B.LOG]);
+  const NAMES = { [B.GRASS]: ["grass_block"], [B.DIRT]: ["dirt"], [B.STONE]: ["stone"], [B.SAND]: ["sand"], [B.WATER]: ["water", "flowing_water"], [B.LOG]: ["oak_log"], [B.LEAVES]: ["oak_leaves"], [B.PLANT]: ["short_grass", "grass", "tall_grass"] };
+  function buildWorld() {
+    const r = rng(1234);
+    const lat = s => Array.from({ length: s + 1 }, () => Array.from({ length: s + 1 }, r));
+    const g1 = lat(5), g2 = lat(10);
+    const sm = t => t * t * (3 - 2 * t);
+    const vn = (g, s, x, z) => { const fx = x / N * s, fz = z / N * s, ix = Math.min(Math.floor(fx), s - 1), iz = Math.min(Math.floor(fz), s - 1), tx = sm(fx - ix), tz = sm(fz - iz); const a = g[ix][iz], b = g[ix + 1][iz], c = g[ix][iz + 1], d = g[ix + 1][iz + 1]; return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz; };
+    const vox = new Uint8Array(N * H * N);
+    const inside = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < N && y < H && z < N;
+    const get = (x, y, z) => inside(x, y, z) ? vox[(x * H + y) * N + z] : 0;
+    const set = (x, y, z, v) => { if (inside(x, y, z)) vox[(x * H + y) * N + z] = v; };
+    const top = [];
+    for (let x = 0; x < N; x++) { top[x] = []; for (let z = 0; z < N; z++) {
+      const dx = (x - N / 2) / (N / 2), dz = (z - N / 2) / (N / 2), island = 1 - Math.min(1, Math.hypot(dx, dz) * 0.95);
+      let h = Math.round(3 + island * 10 + (vn(g1, 5, x, z) - 0.5) * 7 + (vn(g2, 10, x, z) - 0.5) * 2.5);
+      h = Math.max(2, Math.min(H - 9, h));
+      const beach = h - 1 <= WATER, cliff = h >= 15;
+      for (let y = 0; y < h; y++) set(x, y, z, y === h - 1 ? (beach ? B.SAND : cliff ? B.STONE : B.GRASS) : y < h - 4 ? B.STONE : beach ? B.SAND : B.DIRT);
+      for (let y = h; y <= WATER; y++) set(x, y, z, B.WATER);
+      top[x][z] = h;
+    } }
+    for (let k = 0; k < 14; k++) {
+      const x = 4 + Math.floor(r() * (N - 8)), z = 4 + Math.floor(r() * (N - 8)), h = top[x][z];
+      if (get(x, h - 1, z) !== B.GRASS || get(x, h, z) !== B.AIR) continue;
+      const th = 4 + Math.floor(r() * 2);
+      for (let y = h; y < h + th; y++) set(x, y, z, B.LOG);
+      for (let y = h + th - 2; y <= h + th + 1; y++) {
+        const rad = y >= h + th ? 1 : 2;
+        for (let a = -rad; a <= rad; a++) for (let b = -rad; b <= rad; b++) {
+          if (Math.abs(a) === rad && Math.abs(b) === rad && (y > h + th - 1 || r() < 0.5)) continue;
+          if (get(x + a, y, z + b) === B.AIR) set(x + a, y, z + b, B.LEAVES);
+        }
+      }
+    }
+    for (let x = 0; x < N; x++) for (let z = 0; z < N; z++) { const h = top[x][z]; if (get(x, h - 1, z) === B.GRASS && get(x, h, z) === B.AIR && r() < 0.16) set(x, h, z, B.PLANT); }
+    return { get };
+  }
+  const WORLD = buildWorld();
+
+  /* ---------- Meshes: 22 Werte pro Ecke ----------
+     Position(3) Normale(3) Farbe(4) UV(2) Lichtmap(2) mc_Entity(2) mc_midTexCoord(2) at_tangent(4) */
+  const STRIDE = 22;
+  const FACES = [
+    { n: [0, 1, 0], s: 1.0, c: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]] },
+    { n: [0, -1, 0], s: 0.5, c: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]] },
+    { n: [1, 0, 0], s: 0.6, c: [[1,0,1],[1,0,0],[1,1,0],[1,1,1]] },
+    { n: [-1, 0, 0], s: 0.6, c: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]] },
+    { n: [0, 0, 1], s: 0.8, c: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]] },
+    { n: [0, 0, -1], s: 0.8, c: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]] }
+  ];
+  const TILE = (b, fi) => b === B.GRASS ? (fi === 0 ? 0 : fi === 1 ? 2 : 1) : b === B.DIRT ? 2 : b === B.STONE ? 3 : b === B.SAND ? 4 : b === B.WATER ? 5 : b === B.LOG ? (fi < 2 ? 7 : 6) : b === B.LEAVES ? 8 : 9;
+  const GRASS_C = [0.49, 0.74, 0.33], LEAF_C = [0.36, 0.64, 0.2], WATER_C = [0.25, 0.46, 0.89];
+  const TINT = (b, fi) => (b === B.GRASS && fi === 0) || b === B.PLANT ? GRASS_C : b === B.LEAVES ? LEAF_C : b === B.WATER ? WATER_C : [1, 1, 1];
+  const AOV = [0.45, 0.65, 0.82, 1];
+  function meshBuilder() {
+    const v = [], i = [];
+    return { v, i,
+      quad(P, n, cols, uvs, lm, id, mid) {
+        const base = v.length / STRIDE, t = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]];
+        for (let k = 0; k < 4; k++) v.push(P[k][0], P[k][1], P[k][2], n[0], n[1], n[2], cols[k][0], cols[k][1], cols[k][2], cols[k][3], uvs[k][0], uvs[k][1], lm[0], lm[1], id, 0, mid[0], mid[1], t[0], t[1], t[2], 1);
+        i.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      },
+      done() { return { v: new Float32Array(v), i: new Uint32Array(i) }; }
+    };
+  }
+  function tileUV(t) { const u0 = (t % 4) / 4, v0 = Math.floor(t / 4) / 4, e = 0.25, p = 0.0004; return { uvs: [[u0 + p, v0 + e - p], [u0 + e - p, v0 + e - p], [u0 + e - p, v0 + p], [u0 + p, v0 + p]], mid: [u0 + e / 2, v0 + e / 2] }; }
+  function buildTerrain(ent) {
+    const get = WORLD.get, op = meshBuilder(), wa = meshBuilder();
+    const solid = (x, y, z) => OPAQUE.has(get(x, y, z)) ? 1 : 0;
+    const sky = (x, y, z) => { let f = 0; for (let yy = y; yy < H; yy++) { const b = get(x, yy, z); if (OPAQUE.has(b)) return 6; if (b === B.LEAVES || b === B.WATER) f++; } return Math.max(0, 15 - f); };
+    for (let x = 0; x < N; x++) for (let y = 0; y < H; y++) for (let z = 0; z < N; z++) {
+      const b = get(x, y, z); if (!b) continue;
+      if (b === B.PLANT) {
+        const { uvs, mid } = tileUV(9), c = [...GRASS_C, 1], lm = [0, sky(x, y, z) * 16];
+        op.quad([[x + .15, y, z + .15], [x + .85, y, z + .85], [x + .85, y + 1, z + .85], [x + .15, y + 1, z + .15]], [0, 1, 0], [c, c, c, c], uvs, lm, ent(b), mid);
+        op.quad([[x + .15, y, z + .85], [x + .85, y, z + .15], [x + .85, y + 1, z + .15], [x + .15, y + 1, z + .85]], [0, 1, 0], [c, c, c, c], uvs, lm, ent(b), mid);
+        continue;
+      }
+      FACES.forEach((f, fi) => {
+        const fx = x + f.n[0], fy = y + f.n[1], fz = z + f.n[2], nb = get(fx, fy, fz);
+        if (OPAQUE.has(nb)) return;
+        if (b === B.WATER && nb === B.WATER) return;
+        const low = b === B.WATER && get(x, y + 1, z) !== B.WATER;
+        const P = f.c.map(c => [x + c[0], y + (low && c[1] === 1 ? 0.875 : c[1]), z + c[2]]);
+        const ax = [0, 1, 2].filter(a => f.n[a] === 0);
+        const ao = b === B.WATER ? [1, 1, 1, 1] : f.c.map(c => {
+          const d1 = [0, 0, 0], d2 = [0, 0, 0]; d1[ax[0]] = c[ax[0]] ? 1 : -1; d2[ax[1]] = c[ax[1]] ? 1 : -1;
+          const s1 = solid(fx + d1[0], fy + d1[1], fz + d1[2]), s2 = solid(fx + d2[0], fy + d2[1], fz + d2[2]);
+          const cc = solid(fx + d1[0] + d2[0], fy + d1[1] + d2[1], fz + d1[2] + d2[2]);
+          return AOV[s1 && s2 ? 0 : 3 - (s1 + s2 + cc)];
+        });
+        const tint = TINT(b, fi), cols = ao.map(a => [tint[0] * f.s * a, tint[1] * f.s * a, tint[2] * f.s * a, 1]);
+        const { uvs, mid } = tileUV(TILE(b, fi));
+        (b === B.WATER ? wa : op).quad(P, f.n, cols, uvs, [0, sky(fx, fy, fz) * 16], ent(b), mid);
+      });
+    }
+    return { opaque: op.done(), water: wa.done() };
+  }
+  function buildSky() {
+    const m = meshBuilder(), R = 100, la = 12, lo = 24, w = [1, 1, 1, 1], uv = [[0, 0], [0, 0], [0, 0], [0, 0]];
+    const pt = (i, j) => { const th = (i / la) * Math.PI - Math.PI / 2, ph = (j / lo) * Math.PI * 2; return [Math.cos(th) * Math.cos(ph) * R, Math.sin(th) * R, Math.cos(th) * Math.sin(ph) * R]; };
+    for (let i = 0; i < la; i++) for (let j = 0; j < lo; j++) m.quad([pt(i, j), pt(i, j + 1), pt(i + 1, j + 1), pt(i + 1, j)], [0, 1, 0], [w, w, w, w], uv, [0, 240], -1, [0, 0]);
+    return m.done();
+  }
+  function buildCelestial(s) {
+    const m = meshBuilder(), w = [1, 1, 1, 1];
+    m.quad([[100, -s, -s], [100, -s, s], [100, s, s], [100, s, -s]], [-1, 0, 0], [w, w, w, w], [[0, 1], [1, 1], [1, 0], [0, 0]], [0, 240], -1, [0.5, 0.5]);
+    return m.done();
+  }
+  function buildScreenQuad() {
+    const m = meshBuilder(), w = [1, 1, 1, 1];
+    m.quad([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], [0, 0, 1], [w, w, w, w], [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 240], -1, [0.5, 0.5]);
+    return m.done();
+  }
+
+  /* ---------- Texturen (eigene Pixelkunst im Minecraft-Stil) ---------- */
+  function tex(w, h, data, o = {}) {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, o.internal || gl.RGBA8, w, h, 0, o.format || gl.RGBA, o.type || gl.UNSIGNED_BYTE, data);
+    const f = o.filter || gl.NEAREST, wr = o.wrap || gl.CLAMP_TO_EDGE;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wr); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wr);
+    return t;
+  }
+  function makeAtlas() {
+    const S = 64, d = new Uint8Array(S * S * 4), r = rng(99), n = (b, a) => Math.max(0, Math.min(255, b + (r() - 0.5) * a));
+    const put = (t, i, j, R, G, Bc, A = 255) => { const o = (((t >> 2) * 16 + j) * S + (t % 4) * 16 + i) * 4; d[o] = R; d[o + 1] = G; d[o + 2] = Bc; d[o + 3] = A; };
+    const dirt = (t, i, j) => { const k = r() < 0.12 ? 0.72 : 1; put(t, i, j, n(134, 26) * k, n(96, 20) * k, n(67, 16) * k); };
+    for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+      const v0 = n(160, 70); put(0, i, j, v0, v0, v0);
+      if (j < 3 + (i * 7 % 3 === 0 ? 1 : 0) + (i % 5 === 0 ? 1 : 0)) put(1, i, j, n(106, 24), n(166, 30), n(68, 18)); else dirt(1, i, j);
+      dirt(2, i, j);
+      const v3 = n(125, 34); put(3, i, j, v3, v3, v3);
+      put(4, i, j, n(219, 14), n(207, 14), n(163, 14));
+      const w = Math.max(0, Math.min(255, 175 + 38 * Math.sin((i + j * 0.6) * 0.9) + (r() - 0.5) * 18)); put(5, i, j, w, w, w, 182);
+      const s6 = (i % 4 === 0 || i % 7 === 3) ? 0.74 : 1; put(6, i, j, n(108, 12) * s6, n(84, 10) * s6, n(50, 8) * s6);
+      const dd = Math.max(Math.abs(i - 7.5), Math.abs(j - 7.5)), bark = dd > 6.5, ring = Math.floor(dd) % 2 === 0;
+      put(7, i, j, bark ? n(108, 12) : ring ? n(178, 10) : n(150, 10), bark ? n(84, 10) : ring ? n(142, 10) : n(118, 10), bark ? n(50, 8) : ring ? n(88, 10) : n(70, 10));
+      const v8 = n(150, 90); put(8, i, j, v8, v8, v8, r() < 0.16 ? 0 : 255);
+    }
+    for (let i = 0; i < 16; i++) { if (i % 2 && r() < 0.6) continue; const hh = 5 + Math.floor(r() * 10); for (let j = 16 - hh; j < 16; j++) { const v = n(150 + (16 - j) * 4, 30); put(9, i, j, v, v, v); } }
+    return tex(S, S, d);
+  }
+  function makeSimple(size, fn, o) { const d = new Uint8Array(size * size * 4); for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) d.set(fn(i, j), (j * size + i) * 4); return tex(size, size, d, o); }
+  function makeTextures() {
+    const r = rng(5);
+    return {
+      atlas: makeAtlas(),
+      sun: makeSimple(16, (i, j) => { const e = Math.max(Math.abs(i - 7.5), Math.abs(j - 7.5)); return e < 4 ? [255, 255, 222, 255] : e < 6 ? [255, 232, 140, 200] : [255, 200, 90, 60]; }),
+      moon: makeSimple(16, (i, j) => { const e = Math.max(Math.abs(i - 7.5), Math.abs(j - 7.5)); const v = e < 4 ? 200 + (r() < 0.2 ? -45 : 0) : 0; return [v, v, v + 12, e < 4 ? 255 : 0]; }),
+      noise: makeSimple(256, () => [r() * 255, r() * 255, r() * 255, r() * 255], { filter: gl.LINEAR, wrap: gl.REPEAT }),
+      white: makeSimple(1, () => [255, 255, 255, 255]),
+      black: makeSimple(1, () => [0, 0, 0, 0]),
+      normal: makeSimple(1, () => [128, 128, 255, 255]),
+      lightmap: makeSimple(16, () => [255, 255, 255, 255], { filter: gl.LINEAR })
+    };
+  }
+  function updateLightmap(skyB) {
+    const d = new Uint8Array(16 * 16 * 4), curve = l => { const x = l / 15; return x / (4 - 3 * x); };
+    for (let sy = 0; sy < 16; sy++) for (let bx = 0; bx < 16; bx++) {
+      const s = curve(sy) * skyB, b = curve(bx), o = (sy * 16 + bx) * 4;
+      d[o] = Math.min(255, (Math.max(s * 0.96, b) + 0.05) * 255); d[o + 1] = Math.min(255, (Math.max(s * 0.98, b * 0.82) + 0.05) * 255);
+      d[o + 2] = Math.min(255, (Math.max(s, b * 0.58) + 0.06) * 255); d[o + 3] = 255;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, T.lightmap); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 16, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, d);
+  }
+  function makeVAO(mesh, noColor) {
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, mesh.v, gl.STATIC_DRAW);
+    const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.i, gl.STATIC_DRAW);
+    for (const [loc, size, off] of [[0,3,0],[1,3,3],[2,4,6],[3,2,10],[4,2,12],[5,2,14],[6,2,16],[7,4,18]]) {
+      if (loc === 2 && noColor) continue;
+      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, STRIDE * 4, off * 4);
+    }
+    gl.bindVertexArray(null);
+    return { vao, count: mesh.i.length, bufs: [vb, ib] };
+  }
+  function freeVAO(o) { if (!o) return; gl.deleteVertexArray(o.vao); o.bufs.forEach(b => gl.deleteBuffer(b)); }
+
+  /* ---------- Übersetzer: Minecraft-GLSL (Iris/OptiFine) -> WebGL2 ---------- */
+  class PErr extends Error { constructor(file, msg, log) { super(msg); this.file = file; this.log = log || ""; } }
+  const RESERVED = /\b(input|output|filter|sample|common|partition|active|half|fixed|superp|sizeof|cast|namespace|using|external|interface|union|enum|typedef|template|this|packed|goto|inline|noinline|volatile|public|static|extern|long|short|unsigned|resource)\b/g;
+  const FORMAT_DEFS = ["R8","RG8","RGB8","RGBA8","R8_SNORM","RGBA8_SNORM","R16","RG16","RGB16","RGBA16","R16F","RG16F","RGB16F","RGBA16F","R32F","RG32F","RGB32F","RGBA32F","R11F_G11F_B10F","RGB10_A2","RGB9_E5","RGBA2","RGBA4","RGB5_A1","R32I","R32UI","RGBA32UI","RGB565"].map((n, i) => `#define ${n} ${i + 1}`).join("\n");
+  const ATTR = ["ws_Vertex", "ws_Normal", "ws_Color", "ws_MTC0", "ws_MTC1", "mc_Entity", "mc_midTexCoord", "at_tangent"];
+  function translate(src, stage, mcv) {
+    let s = src.replace(/\r/g, "");
+    const vm = s.match(/^[ \t]*#version[ \t]+(\d+)/m), ver = vm ? +vm[1] : 110;
+    let db = null;
+    const rt = s.match(/\/\*\s*RENDERTARGETS\s*:\s*([\d,\s]+?)\s*\*\//), dbm = s.match(/\/\*\s*DRAWBUFFERS\s*:\s*(\d+)\s*\*\//);
+    if (rt) db = rt[1].split(",").map(x => parseInt(x, 10)).filter(x => !isNaN(x)); else if (dbm) db = [...dbm[1]].map(Number);
+    s = s.replace(/^[ \t]*#version.*$/m, "").replace(/^[ \t]*#extension.*$/gm, "");
+    if (ver < 130) s = s.replace(/\btexture\b/g, "ws_gtex");
+    s = s.replace(RESERVED, "ws_$1");
+    s = s.replace(/\btexture2DLod\b/g, "textureLod").replace(/\btexture2DGrad(ARB)?\b/g, "textureGrad").replace(/\b(texture2D|texture3D|textureCube)\b/g, "texture")
+      .replace(/\bshadow2D(Lod)?\b/g, "ws_shadow2D").replace(/\bsampler2DShadow\b/g, "sampler2D").replace(/\btexelFetch2D\b/g, "texelFetch");
+    s = s.replace(/\bgl_ModelViewProjectionMatrix\b/g, "(ws_P*ws_MV)").replace(/\bgl_ModelViewMatrixInverse\b/g, "inverse(ws_MV)").replace(/\bgl_ProjectionMatrixInverse\b/g, "inverse(ws_P)")
+      .replace(/\bgl_ModelViewMatrix\b/g, "ws_MV").replace(/\bgl_ProjectionMatrix\b/g, "ws_P").replace(/\bgl_NormalMatrix\b/g, "ws_NM")
+      .replace(/\bgl_TextureMatrix\s*\[\s*0\s*\]/g, "mat4(1.0)").replace(/\bgl_TextureMatrix\s*\[\s*\d\s*\]/g, "ws_TM1")
+      .replace(/\bgl_TexCoord\s*\[\s*(\d)\s*\]/g, "ws_TexCoord$1").replace(/\bgl_FogFragCoord\b/g, "ws_FogFragCoord")
+      .replace(/\bgl_Fog\.color\b/g, "vec4(ws_fogCol,1.0)").replace(/\bgl_Fog\.start\b/g, "ws_fogStart").replace(/\bgl_Fog\.end\b/g, "ws_fogEnd")
+      .replace(/\bgl_Fog\.density\b/g, "ws_fogDensity").replace(/\bgl_Fog\.scale\b/g, "(1.0/(ws_fogEnd-ws_fogStart))");
+    let head = `#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp sampler3D;\n#define MC_VERSION ${mcv}\n#define MC_GL_VERSION 320\n#define MC_GLSL_VERSION 150\n#define IS_IRIS\n#define MC_RENDER_QUALITY 1.0\n#define MC_SHADOW_QUALITY 1.0\n#define MC_HAND_DEPTH 0.125\n${FORMAT_DEFS}\n`
+      + `uniform mat4 ws_MV;\nuniform mat4 ws_P;\nuniform mat3 ws_NM;\nuniform mat4 ws_TM1;\nuniform vec3 ws_fogCol;\nuniform float ws_fogStart;\nuniform float ws_fogEnd;\nuniform float ws_fogDensity;\n`
+      + `vec4 ws_shadow2D(sampler2D s, vec3 c) { return vec4(step(c.z, texture(s, c.xy).r)); }\nvec4 ws_shadow2D(sampler2D s, vec3 c, float l) { return ws_shadow2D(s, c); }\n`;
+    let n = 1;
+    if (stage === "v") {
+      s = s.replace(/\bftransform\s*\(\s*\)/g, "(ws_P*ws_MV*ws_Vertex)").replace(/\bgl_Vertex\b/g, "ws_Vertex").replace(/\bgl_Normal\b/g, "ws_Normal").replace(/\bgl_Color\b/g, "ws_Color")
+        .replace(/\bgl_MultiTexCoord0\b/g, "ws_MTC0").replace(/\bgl_MultiTexCoord[1-7]\b/g, "ws_MTC1").replace(/\bgl_(FrontColor|BackColor)\b/g, "ws_FrontColor").replace(/\bgl_SecondaryColor\b/g, "vec4(0.0)")
+        .replace(/\battribute\b/g, "in").replace(/\bvarying\b/g, "out");
+      head += "in vec4 ws_Vertex;\nin vec3 ws_Normal;\nin vec4 ws_Color;\nin vec4 ws_MTC0;\nin vec4 ws_MTC1;\nout vec4 ws_FrontColor;\nout vec4 ws_TexCoord0;\nout vec4 ws_TexCoord1;\nout vec4 ws_TexCoord2;\nout vec4 ws_TexCoord3;\nout float ws_FogFragCoord;\n";
+    } else {
+      s = s.replace(/\bgl_Color\b/g, "ws_FrontColor").replace(/\bvarying\b/g, "in");
+      head += "in vec4 ws_FrontColor;\nin vec4 ws_TexCoord0;\nin vec4 ws_TexCoord1;\nin vec4 ws_TexCoord2;\nin vec4 ws_TexCoord3;\nin float ws_FogFragCoord;\n";
+      if (/\bgl_Frag(Color|Data)\b/.test(s)) {
+        for (const m of s.matchAll(/\bgl_FragData\s*\[\s*(\d+)\s*\]/g)) n = Math.max(n, +m[1] + 1);
+        s = s.replace(/\bgl_FragColor\b/g, "ws_FragData[0]").replace(/\bgl_FragData\b/g, "ws_FragData");
+        head += `out vec4 ws_FragData[${n}];\n`;
+      } else {
+        const outs = [...s.matchAll(/^\s*(?:layout\s*\(\s*location\s*=\s*(\d+)\s*\)\s*)?out\s+\w+\s+\w+/gm)];
+        n = Math.max(1, outs.length, ...outs.map(m => (m[1] ? +m[1] + 1 : 0)));
+      }
+    }
+    return { code: head + s, headLines: head.split("\n").length - 1, db: db || Array.from({ length: n }, (_, i) => i), n };
+  }
+  function explainLog(log, t) {
+    const lines = t.code.split("\n");
+    return log.split("\n").filter(Boolean).slice(0, 12).map(l => {
+      const m = l.match(/0:(\d+)/);
+      if (!m) return l;
+      const ln = +m[1];
+      return l.replace(/0:(\d+)/, `Zeile ${Math.max(1, ln - t.headLines)}`) + "\n   > " + (lines[ln - 1] || "").trim();
+    }).join("\n");
+  }
+  function compile(label, vsrc, fsrc, mcv) {
+    const v = translate(vsrc, "v", mcv), f = translate(fsrc, "f", mcv);
+    const sh = (type, t, file) => {
+      const s = gl.createShader(type); gl.shaderSource(s, t.code); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const log = gl.getShaderInfoLog(s) || ""; gl.deleteShader(s); throw new PErr(file, "Der Shader lässt sich nicht übersetzen.", explainLog(log, t)); }
+      return s;
+    };
+    const vs = sh(gl.VERTEX_SHADER, v, label + ".vsh"), fs = sh(gl.FRAGMENT_SHADER, f, label + ".fsh");
+    const p = gl.createProgram(); gl.attachShader(p, vs); gl.attachShader(p, fs);
+    ATTR.forEach((a, i) => gl.bindAttribLocation(p, i, a));
+    gl.linkProgram(p); gl.deleteShader(vs); gl.deleteShader(fs);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new PErr(label, "Vertex- und Fragment-Shader passen nicht zusammen.", gl.getProgramInfoLog(p) || "");
+    const samplers = [gl.SAMPLER_2D, gl.SAMPLER_3D, gl.SAMPLER_2D_SHADOW, gl.INT_SAMPLER_2D, gl.UNSIGNED_INT_SAMPLER_2D, gl.SAMPLER_CUBE, gl.SAMPLER_2D_ARRAY];
+    const uniforms = [];
+    for (let i = 0; i < gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i++) {
+      const info = gl.getActiveUniform(p, i);
+      uniforms.push({ name: info.name.replace(/\[0\]$/, ""), type: info.type, loc: gl.getUniformLocation(p, info.name), sampler: samplers.includes(info.type), is2D: info.type === gl.SAMPLER_2D });
+    }
+    return { label, prog: p, uniforms, db: f.db, n: Math.min(f.n, 8) };
+  }
+  const BUILTIN = {
+    terrain: { v: `#version 120
+varying vec2 texcoord; varying vec2 lmcoord; varying vec4 glcolor; varying float fogDist;
+void main() { gl_Position = ftransform(); texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy; lmcoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy; glcolor = gl_Color; fogDist = length((gl_ModelViewMatrix * gl_Vertex).xyz); }`,
+      f: `#version 120
+uniform sampler2D texture; uniform sampler2D lightmap; uniform vec3 fogColor; uniform float far;
+varying vec2 texcoord; varying vec2 lmcoord; varying vec4 glcolor; varying float fogDist;
+void main() { vec4 c = texture2D(texture, texcoord) * glcolor; if (c.a < 0.1) discard; c.rgb *= texture2D(lightmap, lmcoord).rgb;
+c.rgb = mix(c.rgb, fogColor, clamp((fogDist - far * 0.55) / (far * 0.45), 0.0, 1.0));
+/* DRAWBUFFERS:0 */ gl_FragData[0] = c; }` },
+    sky: { v: `#version 120
+varying vec4 glcolor; varying vec3 vpos;
+void main() { gl_Position = ftransform(); glcolor = gl_Color; vpos = (gl_ModelViewMatrix * gl_Vertex).xyz; }`,
+      f: `#version 120
+uniform vec3 fogColor; uniform vec3 skyColor; uniform vec3 upPosition;
+varying vec4 glcolor; varying vec3 vpos;
+void main() { float up = dot(normalize(vpos), normalize(upPosition)); vec3 c = mix(fogColor, skyColor, smoothstep(-0.05, 0.35, up));
+/* DRAWBUFFERS:0 */ gl_FragData[0] = vec4(c, 1.0); }` },
+    textured: { v: `#version 120
+varying vec2 texcoord; varying vec4 glcolor;
+void main() { gl_Position = ftransform(); texcoord = gl_MultiTexCoord0.xy; glcolor = gl_Color; }`,
+      f: `#version 120
+uniform sampler2D texture; varying vec2 texcoord; varying vec4 glcolor;
+void main() { /* DRAWBUFFERS:0 */ gl_FragData[0] = texture2D(texture, texcoord) * glcolor; }` },
+    final: { v: `#version 120
+varying vec2 texcoord;
+void main() { gl_Position = ftransform(); texcoord = gl_MultiTexCoord0.xy; }`,
+      f: `#version 120
+uniform sampler2D colortex0; varying vec2 texcoord;
+void main() { gl_FragColor = vec4(texture2D(colortex0, texcoord).rgb, 1.0); }` }
+  };
+
+  /* ---------- Shaderpack laden ---------- */
+  const CTN = { gcolor: 0, gdepth: 1, gnormal: 2, composite: 3, gaux1: 4, gaux2: 5, gaux3: 6, gaux4: 7 };
+  function normPath(p) { const out = []; for (const s of p.split("/")) { if (!s || s === ".") continue; if (s === "..") out.pop(); else out.push(s); } return out.join("/"); }
+  function resolveIncludes(src, path, files, depth = 0) {
+    return src.replace(/^[ \t]*#include[ \t]+["<]([^">]+)[">].*$/gm, (m, inc) => {
+      if (depth > 10) throw new PErr(path, "#include ist zu tief verschachtelt.");
+      const p = inc.startsWith("/") ? normPath("shaders/" + inc) : normPath(path.split("/").slice(0, -1).join("/") + "/" + inc);
+      if (!files.has(p)) throw new PErr(path, `#include "${inc}" wurde nicht gefunden (gesucht: ${p}).`);
+      return resolveIncludes(files.get(p), p, files, depth + 1);
+    });
+  }
+  function mcVersionNumber(v) { const p = (v || "1.21.1").split(".").map(Number); return p[0] * 10000 + (p[1] || 0) * 100 + (p[2] || 0); }
+  function compilePack(proj, version) {
+    const files = new Map(proj.files.filter(f => f.type === "text").map(f => [f.path, f.content]));
+    const has = n => files.has(`shaders/${n}.vsh`) && files.has(`shaders/${n}.fsh`);
+    const mcv = mcVersionNumber(version);
+    const all = [...files.values()].join("\n");
+    const floatBufs = new Set();
+    for (const m of all.matchAll(/const\s+int\s+(colortex\d+|gcolor|gdepth|gnormal|composite|gaux[1-4])Format\s*=\s*([A-Za-z0-9_]+)/g)) {
+      const n = m[1].startsWith("colortex") ? +m[1].slice(8) : CTN[m[1]];
+      if (/16|32|11F/.test(m[2])) floatBufs.add(n);
+    }
+    const ids = new Map(), bp = files.get("shaders/block.properties");
+    if (bp) for (const line of bp.replace(/\\\r?\n/g, " ").split("\n")) {
+      const m = line.match(/^\s*block\.(\d+)\s*=\s*(.+)$/); if (!m) continue;
+      for (const raw of m[2].trim().split(/\s+/)) ids.set(raw.replace(/^minecraft:/, "").split(":")[0], +m[1]);
+    }
+    const ent = b => { for (const nm of NAMES[b] || []) if (ids.has(nm)) return ids.get(nm); return -1; };
+    const user = [];
+    const mk = name => { user.push(name); const vp = `shaders/${name}.vsh`, fp = `shaders/${name}.fsh`; return compile(name, resolveIncludes(files.get(vp), vp, files), resolveIncludes(files.get(fp), fp, files), mcv); };
+    const mkB = b => compile("(eingebaut) " + b, BUILTIN[b].v, BUILTIN[b].f, mcv);
+    const pick = (chain, b) => { for (const n of chain) if (has(n)) return mk(n); return mkB(b); };
+    const list = pre => { const out = []; for (let i = 0; i < 16; i++) { const n = pre + (i || ""); if (has(n)) out.push(mk(n)); } return out; };
+    const P = { floatBufs, user };
+    P.sky = pick(["gbuffers_skybasic", "gbuffers_basic"], "sky");
+    P.skytex = pick(["gbuffers_skytextured", "gbuffers_textured", "gbuffers_basic"], "textured");
+    P.terrain = pick(["gbuffers_terrain", "gbuffers_textured_lit", "gbuffers_textured", "gbuffers_basic"], "terrain");
+    P.water = pick(["gbuffers_water", "gbuffers_terrain", "gbuffers_textured_lit", "gbuffers_textured", "gbuffers_basic"], "terrain");
+    P.deferred = list("deferred");
+    P.composite = list("composite");
+    P.final = has("final") ? mk("final") : mkB("final");
+    P.programs = [P.sky, P.skytex, P.terrain, P.water, ...P.deferred, ...P.composite, P.final];
+    const terrain = buildTerrain(ent);
+    P.vaos = { opaque: makeVAO(terrain.opaque), water: makeVAO(terrain.water) };
+    return P;
+  }
+  function freePack(P) {
+    if (!P) return;
+    new Set(P.programs).forEach(p => gl.deleteProgram(p.prog));
+    freeVAO(P.vaos.opaque); freeVAO(P.vaos.water);
+  }
+
+  /* ---------- Render-Ziele (colortex0..15 mit Ping-Pong, Tiefe) ---------- */
+  let floatOK = false, MAXA = 4;
+  function ensureRT(w, h) {
+    if (RT && RT.w === w && RT.h === h && RT.pack === pv.pack) return;
+    if (RT) { for (const c of RT.ct.values()) c.t.forEach(t => gl.deleteTexture(t)); [RT.depthA, RT.depthB].forEach(t => gl.deleteTexture(t)); [RT.fbG, RT.fbF, RT.fbR, RT.fbD].forEach(f => gl.deleteFramebuffer(f)); }
+    const depth = () => tex(w, h, null, { internal: gl.DEPTH_COMPONENT24, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
+    RT = { w, h, pack: pv.pack, ct: new Map(), depthA: depth(), depthB: depth(), fbG: gl.createFramebuffer(), fbF: gl.createFramebuffer(), fbR: gl.createFramebuffer(), fbD: gl.createFramebuffer() };
+    gl.bindFramebuffer(gl.FRAMEBUFFER, RT.fbG); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, RT.depthA, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, RT.fbR); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, RT.depthA, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, RT.fbD); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, RT.depthB, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  function ct(n) {
+    let c = RT.ct.get(n);
+    if (!c) {
+      const fl = floatOK && pv.pack && pv.pack.floatBufs.has(n);
+      const mk = () => tex(RT.w, RT.h, null, fl ? { internal: gl.RGBA16F, type: gl.HALF_FLOAT, filter: gl.LINEAR } : { filter: gl.LINEAR });
+      c = { t: [mk(), mk()], cur: 0 }; RT.ct.set(n, c);
+    }
+    return c;
+  }
+  function attach(fb, list) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    const bufs = [];
+    for (let i = 0; i < MAXA; i++) {
+      const t = list[i] || null;
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t, 0);
+      if (i < list.length) bufs.push(t ? gl.COLOR_ATTACHMENT0 + i : gl.NONE);
+    }
+    gl.drawBuffers(bufs.length ? bufs : [gl.NONE]);
+  }
+  function samplerTex(name, phase, extra) {
+    const m = name.match(/^colortex(\d+)$/), n = m ? +m[1] : CTN[name];
+    if (n !== undefined) { const c = ct(n); return phase === "g" ? c.t[1 - c.cur] : c.t[c.cur]; }
+    if (name === "depthtex0" || name === "gdepthtex") return phase === "g" ? RT.depthB : RT.depthA;
+    if (/^depthtex[12]$/.test(name)) return RT.depthB;
+    if (/^(shadow|watershadow|shadowtex[01]|shadowcolor[01]?)$/.test(name)) return T.white;
+    if (name === "noisetex") return T.noise;
+    if (name === "lightmap") return T.lightmap;
+    if (name === "normals") return T.normal;
+    if (name === "specular") return T.black;
+    if (/^(ws_gtex|gtexture|tex|gtex|albedo|ws_sample)$/.test(name)) return extra.__tex || T.atlas;
+    return T.black;
+  }
+  function setU(u, v) {
+    const a = typeof v === "number" ? [v] : v, L = u.loc;
+    switch (u.type) {
+      case gl.FLOAT: gl.uniform1f(L, a[0]); break;
+      case gl.FLOAT_VEC2: gl.uniform2f(L, a[0], a[1] ?? 0); break;
+      case gl.FLOAT_VEC3: gl.uniform3f(L, a[0], a[1] ?? 0, a[2] ?? 0); break;
+      case gl.FLOAT_VEC4: gl.uniform4f(L, a[0], a[1] ?? 0, a[2] ?? 0, a[3] ?? 1); break;
+      case gl.INT: case gl.BOOL: gl.uniform1i(L, Math.round(a[0])); break;
+      case gl.INT_VEC2: case gl.BOOL_VEC2: gl.uniform2i(L, Math.round(a[0]), Math.round(a[1] ?? 0)); break;
+      case gl.INT_VEC3: case gl.BOOL_VEC3: gl.uniform3i(L, Math.round(a[0]), Math.round(a[1] ?? 0), Math.round(a[2] ?? 0)); break;
+      case gl.FLOAT_MAT3: if (a.length === 9) gl.uniformMatrix3fv(L, false, a); break;
+      case gl.FLOAT_MAT4: if (a.length === 16) gl.uniformMatrix4fv(L, false, a); break;
+    }
+  }
+  function useProgram(p, phase, extra) {
+    gl.useProgram(p.prog);
+    let unit = 0;
+    for (const u of p.uniforms) {
+      if (u.sampler) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, u.is2D ? samplerTex(u.name, phase, extra) : null);
+        gl.uniform1i(u.loc, unit); unit++;
+      } else {
+        const v = extra[u.name] !== undefined ? extra[u.name] : FV[u.name];
+        if (v !== undefined) setU(u, v);
+      }
+    }
+  }
+  function drawMesh(o) { gl.bindVertexArray(o.vao); gl.drawElements(gl.TRIANGLES, o.count, gl.UNSIGNED_INT, 0); gl.bindVertexArray(null); }
+  function gbuffer(p, mesh, extra) {
+    const used = new Set(), list = [];
+    for (let i = 0; i < p.n; i++) { const n = p.db[i] ?? i; if (used.has(n)) { list.push(null); continue; } used.add(n); const c = ct(n); list.push(c.t[c.cur]); }
+    attach(RT.fbG, list);
+    useProgram(p, "g", extra);
+    drawMesh(mesh);
+  }
+  function fullscreen(p, toScreen) {
+    const written = [];
+    if (toScreen) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.drawBuffers([gl.BACK]); }
+    else {
+      const used = new Set(), list = [];
+      for (let i = 0; i < p.n; i++) { const n = p.db[i] ?? i; if (used.has(n)) { list.push(null); continue; } used.add(n); const c = ct(n); list.push(c.t[1 - c.cur]); written.push(c); }
+      attach(RT.fbF, list);
+    }
+    useProgram(p, "f", SCREEN_EXTRA);
+    drawMesh(VAO.screen);
+    written.forEach(c => { c.cur ^= 1; });
+  }
+
+  /* ---------- Ein Bild berechnen ---------- */
+  const TM1 = new Float32Array([1 / 256,0,0,0, 0,1 / 256,0,0, 0,0,1,0, 8 / 256,8 / 256,0,1]);
+  const SCREEN_EXTRA = { ws_MV: M4.I(), ws_P: M4.ortho(0, 1, 0, 1, -1, 1), ws_NM: new Float32Array([1,0,0, 0,1,0, 0,0,1]), ws_TM1: TM1 };
+  let VAO = null;
+  function computeFrame(now, w, h) {
+    const t = pv.time, th = t / 24000 * Math.PI * 2;
+    const sunW = [Math.cos(th), Math.sin(th), 0], moonW = [-sunW[0], -sunW[1], 0], elev = sunW[1];
+    const day = sstep(-0.12, 0.28, elev), dusk = Math.exp(-Math.pow(elev / 0.22, 2)), rain = pv.rain;
+    let sky = mix3([0.01, 0.012, 0.03], [0.47, 0.65, 1.0], day);
+    let fog = mix3(mix3([0.015, 0.02, 0.045], [0.73, 0.84, 1.0], day), [1.0, 0.52, 0.28], dusk * 0.8);
+    if (rain) { const gs = (sky[0] + sky[1] + sky[2]) / 3 * 0.6, gf = (fog[0] + fog[1] + fog[2]) / 3 * 0.6; sky = mix3(sky, [gs, gs, gs * 1.05], 0.85); fog = mix3(fog, [gf, gf, gf * 1.05], 0.85); }
+    const C = [N / 2, WATER + 3, N / 2], cp = Math.cos(pv.pitch);
+    const eye = [C[0] + Math.sin(pv.yaw) * cp * pv.dist, C[1] + Math.sin(pv.pitch) * pv.dist, C[2] + Math.cos(pv.yaw) * cp * pv.dist];
+    const R = M4.look(eye, C, [0, 1, 0]), near = 0.05, far = 160;
+    const proj = M4.persp(70 * Math.PI / 180, w / h, near, far);
+    const MV = M4.mul(R, M4.trans(-eye[0], -eye[1], -eye[2]));
+    const light = elev >= -0.03 ? sunW : moonW;
+    const shadowMV = M4.mul(M4.trans(0, 0, -100), M4.look(light, [0, 0, 0], [0, 0, 1]));
+    const shadowP = M4.ortho(-160, 160, -160, 160, 0.05, 256);
+    const k100 = v => v.map(x => x * 100);
+    pv.frames++;
+    FV = {
+      viewWidth: w, viewHeight: h, aspectRatio: w / h, near, far,
+      frameTimeCounter: ((now - pv.t0) / 1000) % 3600, frameTime: 1 / 60, frameCounter: pv.frames % 720720,
+      worldTime: Math.round(t), worldDay: 0, moonPhase: 0, sunAngle: t / 24000, shadowAngle: (t / 24000) % 0.5,
+      sunPosition: k100(M4.dir(R, sunW)), moonPosition: k100(M4.dir(R, moonW)), shadowLightPosition: k100(M4.dir(R, light)), upPosition: k100(M4.dir(R, [0, 1, 0])),
+      cameraPosition: eye, previousCameraPosition: eye, eyePosition: eye, eyeAltitude: eye[1],
+      cameraPositionInt: eye.map(Math.floor), cameraPositionFract: eye.map(v => v - Math.floor(v)), previousCameraPositionInt: eye.map(Math.floor), previousCameraPositionFract: eye.map(v => v - Math.floor(v)),
+      gbufferModelView: R, gbufferModelViewInverse: M4.inv(R), gbufferProjection: proj, gbufferProjectionInverse: M4.inv(proj),
+      gbufferPreviousModelView: R, gbufferPreviousProjection: proj,
+      shadowModelView: shadowMV, shadowModelViewInverse: M4.inv(shadowMV), shadowProjection: shadowP, shadowProjectionInverse: M4.inv(shadowP),
+      fogColor: fog, skyColor: sky, rainStrength: rain, wetness: rain, isEyeInWater: 0, eyeBrightness: [0, 240], eyeBrightnessSmooth: [0, 240],
+      blindness: 0, darknessFactor: 0, nightVision: 0, screenBrightness: 1, centerDepthSmooth: 0.98,
+      fogStart: far * 0.55, fogEnd: far, fogDensity: 0.5, fogMode: 9729, fogShape: 0, atlasSize: [64, 64], entityColor: [0, 0, 0, 0],
+      heldItemId: 0, heldBlockLightValue: 0, heldItemId2: 0, heldBlockLightValue2: 0, playerMood: 0, biome_precipitation: rain > 0 ? 1 : 0,
+      ws_fogCol: fog, ws_fogStart: far * 0.55, ws_fogEnd: far, ws_fogDensity: 0.5, ws_TM1: TM1, ws_NM: M4.m3(R)
+    };
+    MX = { R, MV, proj, th, fog, skyB: mix(0.22, 1.0, day) * (1 - rain * 0.3) };
+  }
+  function render(now) {
+    const w = canvas.width, h = canvas.height, P = pv.pack;
+    ensureRT(w, h);
+    computeFrame(now, w, h);
+    if (Math.abs(MX.skyB - pv.skyB) > 0.002) { updateLightmap(MX.skyB); pv.skyB = MX.skyB; }
+    gl.viewport(0, 0, w, h);
+    gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
+    // Puffer leeren wie Minecraft: colortex0 mit Nebelfarbe, gdepth mit 1, Rest mit 0
+    for (const [n, c] of RT.ct) {
+      attach(RT.fbF, [c.t[c.cur]]);
+      if (n === 0) gl.clearColor(MX.fog[0], MX.fog[1], MX.fog[2], 1); else if (n === 1) gl.clearColor(1, 1, 1, 1); else gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    attach(RT.fbG, []); gl.depthMask(true); gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT);
+    const view = { ws_MV: MX.R, ws_P: MX.proj };
+    // Himmel
+    gl.vertexAttrib4f(2, FV.skyColor[0], FV.skyColor[1], FV.skyColor[2], 1);
+    gl.depthMask(false);
+    gbuffer(P.sky, VAO.sky, view);
+    // Sonne und Mond
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gbuffer(P.skytex, VAO.sun, { ws_MV: M4.mul(MX.R, M4.rotZ(MX.th)), ws_P: MX.proj, __tex: T.sun });
+    gbuffer(P.skytex, VAO.moon, { ws_MV: M4.mul(MX.R, M4.rotZ(MX.th + Math.PI)), ws_P: MX.proj, __tex: T.moon });
+    gl.disable(gl.BLEND);
+    // Blöcke
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
+    gbuffer(P.terrain, P.vaos.opaque, { ws_MV: MX.MV, ws_P: MX.proj });
+    // depthtex1 = Tiefe ohne Wasser
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, RT.fbR); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, RT.fbD);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.disable(gl.DEPTH_TEST);
+    P.deferred.forEach(p => fullscreen(p));
+    // Wasser
+    gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gbuffer(P.water, P.vaos.water, { ws_MV: MX.MV, ws_P: MX.proj });
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+    P.composite.forEach(p => fullscreen(p));
+    fullscreen(P.final, true);
+  }
+
+  /* ---------- Schleife, Steuerung ---------- */
+  function resize() {
+    const cw = canvas.clientWidth; if (!cw) return false;
+    const w = Math.round(Math.min(1280, cw * Math.min(window.devicePixelRatio || 1, 1.5))), h = Math.round(w * 9 / 16);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    return true;
+  }
+  function loop(now) {
+    raf = 0;
+    if (!pv.active || document.hidden) return;
+    const dt = Math.min(0.1, (now - (pv.lastNow || now)) / 1000); pv.lastNow = now;
+    if (pv.orbit && !pv.dragging) pv.yaw += dt * 0.15;
+    if (!resize()) { schedule(); return; }
+    try { render(now); } catch (e) { pv.active = false; showError(e); return; }
+    schedule();
+  }
+  function schedule() { if (!raf && pv.active) raf = requestAnimationFrame(loop); }
+  document.addEventListener("visibilitychange", () => { pv.lastNow = 0; schedule(); });
+
+  function timeLabel(t) { const hh = (t / 1000 + 6) % 24; return String(Math.floor(hh)).padStart(2, "0") + ":" + String(Math.floor((hh % 1) * 60)).padStart(2, "0"); }
+  function setTime(t) { pv.time = t; $("pv-time").value = t; $("pv-time-label").textContent = timeLabel(t); }
+
+  const msg = $("pv-msg");
+  function showError(e) {
+    msg.textContent = "";
+    const h = document.createElement("b"); h.textContent = "Die Vorschau kann diesen Shader noch nicht starten.";
+    const p = document.createElement("p"); p.className = "hint";
+    p.textContent = (e.file ? `Datei: ${e.file}. ` : "") + (e.message || String(e)) + " Minecraft ist manchmal weniger streng als die Vorschau – aber meistens ist es ein echter Fehler.";
+    const pre = document.createElement("pre"); pre.textContent = e.log || "";
+    const b = document.createElement("button"); b.className = "btn ghost"; b.textContent = "Zum Fehler-Doktor";
+    b.onclick = () => { $("errlog").value = `Fehler aus der Live-Vorschau (strenger GLSL-Compiler) in ${e.file || "?"}:\n${e.message}\n${e.log || ""}`; $("errlog").focus(); };
+    msg.append(h, p, pre, b); msg.hidden = false;
+  }
+
+  canvas.addEventListener("pointerdown", e => { pv.dragging = true; pv.px = e.clientX; pv.py = e.clientY; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener("pointermove", e => {
+    if (!pv.dragging) return;
+    pv.yaw -= (e.clientX - pv.px) * 0.008; pv.pitch = Math.max(0.08, Math.min(1.35, pv.pitch + (e.clientY - pv.py) * 0.006));
+    pv.px = e.clientX; pv.py = e.clientY;
+  });
+  const endDrag = () => { pv.dragging = false; };
+  canvas.addEventListener("pointerup", endDrag); canvas.addEventListener("pointercancel", endDrag);
+  canvas.addEventListener("wheel", e => { e.preventDefault(); pv.dist = Math.max(12, Math.min(60, pv.dist * (1 + Math.sign(e.deltaY) * 0.08))); }, { passive: false });
+  $("pv-time").addEventListener("input", e => setTime(+e.target.value));
+  $("pv-rain").addEventListener("change", e => { pv.rain = e.target.checked ? 1 : 0; });
+  $("pv-orbit").onclick = () => { pv.orbit = !pv.orbit; $("pv-orbit").setAttribute("aria-pressed", String(pv.orbit)); $("pv-orbit").textContent = pv.orbit ? "Rundflug an" : "Rundflug aus"; };
+  const fileBase = () => slug(project && project.name);
+  const toBlob = (c, type = "image/png") => new Promise(res => c.toBlob(b => res(b), type));
+  $("pv-photo").onclick = async () => {
+    if (!pv.active) return;
+    render(performance.now());
+    const blob = await toBlob(canvas);
+    if (blob) saveFile(blob, `${fileBase()}-foto-${timeLabel(pv.time).replace(":", "")}.png`);
+  };
+
+  /* Video: 8 Sekunden Rundflug direkt aus der Vorschau */
+  let videoBlob = null, videoURL = null;
+  $("pv-rec").onclick = () => {
+    if (!pv.active) return;
+    if (!canvas.captureStream || typeof MediaRecorder === "undefined") { toast("Dein Browser kann hier keine Videos aufnehmen."); return; }
+    const btn = $("pv-rec"); btn.disabled = true;
+    const stream = canvas.captureStream(30);
+    const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find(m => MediaRecorder.isTypeSupported(m));
+    let rec;
+    try { rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : undefined); }
+    catch { btn.disabled = false; toast("Video-Aufnahme geht hier nicht."); return; }
+    const chunks = [], wasOrbit = pv.orbit;
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      pv.orbit = wasOrbit; btn.disabled = false; btn.textContent = "Video aufnehmen";
+      videoBlob = new Blob(chunks, { type: "video/webm" });
+      if (videoURL) URL.revokeObjectURL(videoURL);
+      videoURL = URL.createObjectURL(videoBlob);
+      const v = $("pv-video-el"); v.src = videoURL; $("pv-video").hidden = false;
+      v.play().catch(() => {});
+      toast("Video fertig. Du kannst es jetzt speichern.");
+    };
+    pv.orbit = true; rec.start(250);
+    let left = 8; btn.textContent = `Aufnahme … ${left}`;
+    const iv = setInterval(() => { left--; btn.textContent = `Aufnahme … ${left}`; if (left <= 0) { clearInterval(iv); rec.stop(); } }, 1000);
+  };
+  $("pv-video-save").onclick = () => { if (videoBlob) saveFile(videoBlob, `${fileBase()}-vorschau.webm`); };
+
+  /* Fotos zu vier Tageszeiten */
+  const STILLS = [{ t: 400, label: "Morgen" }, { t: 6000, label: "Mittag" }, { t: 12150, label: "Abend" }, { t: 18000, label: "Nacht" }];
+  let thumbURLs = [];
+  async function makeThumbs() {
+    const box = $("pv-thumbs"); box.textContent = ""; thumbURLs.forEach(u => URL.revokeObjectURL(u)); thumbURLs = [];
+    if (!pv.active || !resize()) return;
+    const keep = { time: pv.time, yaw: pv.yaw };
+    for (const s of STILLS) {
+      pv.time = s.t; pv.yaw = 0.9;
+      try { render(performance.now()); } catch (e) { pv.active = false; showError(e); return; }
+      const blob = await toBlob(canvas, "image/jpeg");
+      if (!blob) continue;
+      const url = URL.createObjectURL(blob); thumbURLs.push(url);
+      const b = document.createElement("button"); b.className = "thumb"; b.type = "button"; b.title = `${s.label}: Uhrzeit auf ${timeLabel(s.t)} stellen`;
+      const img = document.createElement("img"); img.src = url; img.alt = `${s.label} in der Vorschau`;
+      const sp = document.createElement("span"); sp.textContent = s.label;
+      b.append(img, sp); b.onclick = () => setTime(s.t); box.append(b);
+    }
+    pv.time = keep.time; pv.yaw = keep.yaw;
+    try { render(performance.now()); } catch {}
+  }
+
+  /* ---------- Mod: Inventar-Bild ---------- */
+  function pixelCanvas(f) { const c = document.createElement("canvas"); paintRows(c, f.pixels.rows, f.pixels.pal); return c; }
+  function drawInventory(proj) {
+    const imgs = proj.files.filter(f => f.type === "image" && f.pixels.rows.length && /\/textures\/(item|block)\//.test(f.path));
+    let en = {}, de = {};
+    for (const f of proj.files) { const m = f.path.match(/\/lang\/(de_de|en_us)\.json$/); if (m) { try { const j = JSON.parse(f.content); if (m[1] === "de_de") de = j; else en = j; } catch {} } }
+    const lang = { ...en, ...de }, items = [];
+    const find = suffix => imgs.find(o => o.path.endsWith(suffix));
+    for (const f of imgs) {
+      const m = f.path.match(/assets\/([^/]+)\/textures\/(item|block)\/(.+)\.png$/); if (!m) continue;
+      const [, modid, kind, name] = m, base = name.replace(/_(top|bottom|side|front|back|end)$/, "");
+      if (kind === "block" && base !== name && find(`/textures/block/${base}.png`)) continue;
+      if (kind === "block" && find(`/textures/item/${name}.png`)) continue;
+      const display = lang[`${kind}.${modid}.${name}`] || lang[`item.${modid}.${name}`] || lang[`block.${modid}.${name}`] || name.replace(/_/g, " ");
+      items.push({ f, kind, display, top: kind === "block" ? (find(`/textures/block/${name}_top.png`) || f) : null });
+    }
+    const S = 3, rows = Math.max(1, Math.ceil(items.length / 9)), Hh = 24 + rows * 18;
+    const inv = $("pv-inv"); inv.width = 176 * S; inv.height = Hh * S;
+    const c = inv.getContext("2d"); c.imageSmoothingEnabled = false; c.setTransform(S, 0, 0, S, 0, 0);
+    c.fillStyle = "#c6c6c6"; c.fillRect(0, 0, 176, Hh);
+    c.fillStyle = "#ffffff"; c.fillRect(0, 0, 176, 1); c.fillRect(0, 0, 1, Hh);
+    c.fillStyle = "#555555"; c.fillRect(0, Hh - 1, 176, 1); c.fillRect(175, 0, 1, Hh);
+    c.fillStyle = "#404040"; c.font = "8px 'Pixelify Sans', monospace"; c.fillText((proj.name || "Mod").slice(0, 34), 8, 12);
+    for (let k = 0; k < rows * 9; k++) {
+      const x = 7 + (k % 9) * 18, y = 17 + Math.floor(k / 9) * 18;
+      c.fillStyle = "#373737"; c.fillRect(x, y, 18, 1); c.fillRect(x, y, 1, 18);
+      c.fillStyle = "#ffffff"; c.fillRect(x + 1, y + 17, 17, 1); c.fillRect(x + 17, y + 1, 1, 17);
+      c.fillStyle = "#8b8b8b"; c.fillRect(x + 1, y + 1, 16, 16);
+      const it = items[k]; if (!it) continue;
+      const side = pixelCanvas(it.f);
+      if (it.kind === "item") { c.drawImage(side, x + 1, y + 1, 16, 16); continue; }
+      const top = pixelCanvas(it.top), ox = x + 1, oy = y + 1;
+      c.save(); c.transform(0.5, 0.25, -0.5, 0.25, ox + 8, oy + 1); c.drawImage(top, 0, 0, 16, 16); c.restore();
+      c.save(); c.transform(0.5, 0.25, 0, 0.5625, ox, oy + 5); c.drawImage(side, 0, 0, 16, 16); c.fillStyle = "rgba(0,0,0,.22)"; c.fillRect(0, 0, 16, 16); c.restore();
+      c.save(); c.transform(0.5, -0.25, 0, 0.5625, ox + 8, oy + 9); c.drawImage(side, 0, 0, 16, 16); c.fillStyle = "rgba(0,0,0,.42)"; c.fillRect(0, 0, 16, 16); c.restore();
+    }
+    const ul = $("pv-items"); ul.textContent = "";
+    for (const it of items) {
+      const li = document.createElement("li"), ic = pixelCanvas(it.f), t = document.createElement("span");
+      t.textContent = `${it.display} (${it.kind === "item" ? "Item" : "Block"})`; li.append(ic, t); ul.append(li);
+    }
+    if (!items.length) { const li = document.createElement("li"); li.textContent = "Diese Mod hat keine Texturen zum Anzeigen."; ul.append(li); }
+  }
+  $("pv-inv-save").onclick = async () => { const b = await toBlob($("pv-inv")); if (b) saveFile(b, `${fileBase()}-inventar.png`); };
+
+  /* ---------- Datapack: Chat-Vorschau ---------- */
+  const MC_COLORS = { black: "#000000", dark_blue: "#0000AA", dark_green: "#00AA00", dark_aqua: "#00AAAA", dark_red: "#AA0000", dark_purple: "#AA00AA", gold: "#FFAA00", gray: "#AAAAAA", dark_gray: "#555555", blue: "#5555FF", green: "#55FF55", aqua: "#55FFFF", red: "#FF5555", light_purple: "#FF55FF", yellow: "#FFFF55", white: "#FFFFFF" };
+  function flatten(c, inherit = {}) {
+    if (c == null) return [];
+    if (typeof c === "string" || typeof c === "number") return [{ text: String(c), ...inherit }];
+    if (Array.isArray(c)) { const [first, ...rest] = c; const f = flatten(first, inherit); const st = typeof first === "object" && first && !Array.isArray(first) ? { color: first.color || inherit.color, bold: first.bold ?? inherit.bold } : inherit; return f.concat(...rest.map(x => flatten(x, st))); }
+    const st = { color: c.color || inherit.color, bold: c.bold ?? inherit.bold };
+    const own = c.text ?? c.translate ?? (c.score ? "0" : c.selector ? "Spieler" : "");
+    return [{ text: String(own), ...st }].concat(...(c.extra || []).map(x => flatten(x, st)));
+  }
+  function parseComponent(s) {
+    s = s.trim();
+    try { return flatten(JSON.parse(s)); } catch {}
+    const parts = [...s.matchAll(/text\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')(?:[^}]*?color\s*:\s*"?([a-z_#0-9]+)"?)?/g)].map(m => ({ text: m[1] ?? m[2], color: m[3] }));
+    if (parts.length) return parts;
+    const q = s.match(/^"(.*)"$|^'(.*)'$/); return [{ text: q ? (q[1] ?? q[2]) : s }];
+  }
+  function drawChat(proj) {
+    const box = $("pv-chat"); box.textContent = "";
+    const lines = [];
+    for (const f of proj.files.filter(f => f.path.endsWith(".mcfunction"))) for (const raw of f.content.split("\n")) {
+      const l = raw.trim(); let m;
+      if ((m = l.match(/(?:^|\brun\s+)tellraw\s+\S+\s+(.+)$/))) lines.push(parseComponent(m[1]));
+      else if ((m = l.match(/(?:^|\brun\s+)say\s+(.+)$/))) lines.push([{ text: `[Server] ${m[1]}` }]);
+      if (lines.length >= 10) break;
+    }
+    if (!lines.length) lines.push([{ text: "Dieses Datapack schreibt nichts in den Chat.", color: "gray" }]);
+    for (const parts of lines) {
+      const d = document.createElement("div");
+      for (const p of parts) { const s = document.createElement("span"); s.textContent = p.text; s.style.color = MC_COLORS[p.color] || (/^#[0-9a-f]{6}$/i.test(p.color || "") ? p.color : "#FFFFFF"); if (p.bold) s.style.fontWeight = "700"; d.append(s); }
+      box.append(d);
+    }
+  }
+
+  /* ---------- Öffentliche Funktionen ---------- */
+  if (gl) {
+    floatOK = !!gl.getExtension("EXT_color_buffer_float");
+    MAXA = Math.min(8, gl.getParameter(gl.MAX_COLOR_ATTACHMENTS), gl.getParameter(gl.MAX_DRAW_BUFFERS));
+    T = makeTextures();
+    VAO = { sky: makeVAO(buildSky(), true), sun: makeVAO(buildCelestial(22)), moon: makeVAO(buildCelestial(16)), screen: makeVAO(buildScreenQuad()) };
+  }
+  api.pause = () => { pv.active = false; $("pv-sub").textContent = "Die Vorschau kommt, sobald alles fertig ist."; };
+  api.show = (proj, mode, version, rev) => {
+    api.rev = rev; project = proj; projVersion = version;
+    $("pv-shader").hidden = mode !== "shader"; $("pv-mod").hidden = mode !== "mod"; $("pv-dp").hidden = mode !== "datapack";
+    $("pv-video").hidden = true; videoBlob = null;
+    const sub = $("pv-sub");
+    if (mode === "mod") { pv.active = false; sub.textContent = "So erscheinen deine Items und Blöcke im Inventar."; drawInventory(proj); return; }
+    if (mode === "datapack") { pv.active = false; sub.textContent = "Diese Nachrichten schreibt dein Datapack in den Chat."; drawChat(proj); return; }
+    msg.hidden = true;
+    if (!gl) { pv.active = false; sub.textContent = ""; showError(new PErr("", "Dein Browser kann kein WebGL2.")); return; }
+    freePack(pv.pack); pv.pack = null; pv.active = false;
+    try {
+      pv.pack = compilePack(proj, version);
+      const own = pv.pack.user.length;
+      sub.textContent = own ? `Echter Shader-Code (${pv.pack.user.join(", ")}) auf einer Mini-Welt. Ziehen = drehen, Mausrad = zoomen.` : "Dieses Pack hat keine Shader-Programme – du siehst die normale Grafik.";
+      pv.active = true; pv.lastNow = 0;
+      requestAnimationFrame(() => { makeThumbs().then(schedule); });
+    } catch (e) {
+      sub.textContent = "";
+      showError(e);
+    }
+  };
+  setTime(pv.time);
+  return api;
+})();
+
+function updatePreview(writing) {
+  if (writing) { Preview.pause(); return; }
+  if (Preview.rev === state.rev) return;
+  Preview.show(state.project, state.projMode, state.projVersion, state.rev);
+}
+
+/* ---------- Ereignisse ---------- */
+document.querySelectorAll(".mode").forEach(b => b.onclick = () => { if (!state.busy) setMode(b.dataset.mode); });
+$("version").onchange = e => { state.version = e.target.value; };
+$("desc").addEventListener("input", saveDraft);
+$("go").onclick = buildNew;
+$("stop").onclick = () => state.ctl?.abort();
+$("do-change").onclick = () => buildChange("change");
+$("do-fix").onclick = () => buildChange("fix");
+$("zip").onclick = downloadZip;
+$("copy").onclick = async () => {
+  const f = state.project.files[state.selected]; if (!f) return;
+  try { await navigator.clipboard.writeText(f.content); toast("Kopiert: " + f.path.split("/").pop()); }
+  catch {
+    const pre = document.querySelector("#v-body pre"); if (!pre) return;
+    const r = document.createRange(); r.selectNodeContents(pre);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    toast("Markiert. Drücke Strg+C zum Kopieren.");
+  }
+};
+
+/* ---------- Start ---------- */
+for (const x of VERSIONS) {
+  const o = document.createElement("option");
+  o.value = x.v; o.textContent = x.v;
+  if (x.v === state.version) o.selected = true;
+  $("version").append(o);
+}
+setMode("shader");
+let restored = false;
+try {
+  const last = JSON.parse(store.get("last-project") || "null");
+  if (last && last.raw) {
+    const p = parse(last.raw);
+    if (p.files.length) {
+      Object.assign(state, { project: p, projMode: last.mode, projVersion: last.version, isExample: false });
+      restored = true;
+    }
+  }
+} catch {}
+if (!restored) state.project = parse(EXAMPLE_RAW);
+renderProject(false);
+setStatus("", restored ? "Dein letztes Projekt ist wieder da." : "Das ist ein Beispiel. Beschreibe links dein eigenes Projekt.");
+
+if (window.claude && window.claude.use) {
+  window.claude.use("sample").then(s => { sample = s; if (!s) hideAI(); else renderProject(false); }).catch(hideAI);
+  window.claude.use("downloads").then(d => { downloads = d; }).catch(() => {});
+} else {
+  hideAI();
+}
+})();
+</script>
+
+</body></html>
