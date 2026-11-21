@@ -188,6 +188,9 @@ textarea.small { min-height: 84px; font-size: 14px; }
 .pv-items canvas { width: 24px; height: 24px; image-rendering: pixelated; }
 .chat { background: linear-gradient(#6f9fd6, #a9c8ea 55%, #5d8a3a 55%, #3c5f26); padding: 48px 12px 12px; display: grid; gap: 2px; min-height: 160px; align-content: end; border: 2px solid var(--edge-dark); }
 .chat div { background: rgba(0, 0, 0, .5); color: #fff; font: 16px var(--font-pixel); padding: 2px 6px; text-shadow: 2px 2px 0 rgba(0, 0, 0, .55); justify-self: start; max-width: 100%; overflow-wrap: anywhere; }
+.loadbar { height: 10px; background: var(--code-bg); border: 2px solid var(--edge-dark); }
+.loadbar div { height: 100%; width: 0; background: var(--emerald); transition: width .3s; }
+@media (prefers-reduced-motion: reduce) { .loadbar div { transition: none; } }
 .launch { border-left-color: var(--gold); background: #2a2517; color: #efe2c4; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--panel-2); border: 2px solid var(--gold); padding: 8px 14px; font-size: 14px; z-index: 20; }
 </style>
@@ -197,7 +200,7 @@ textarea.small { min-height: 84px; font-size: 14px; }
     <canvas id="logo" width="16" height="16" aria-hidden="true"></canvas>
     <div>
       <h1>Block-<span>Schmiede</span> KI</h1>
-      <p class="tagline">Beschreibe deinen Shader, deine Mod oder dein Datapack. Die KI baut alle Dateien, prüft sie und packt sie dir als fertige ZIP-Datei.</p>
+      <p class="tagline">Beschreibe deinen Shader, deine Mod oder dein Datapack. Die eigene KI läuft direkt in deinem Browser, baut alle Dateien, prüft und repariert sie und packt sie dir als fertige ZIP-Datei.</p>
     </div>
   </header>
 
@@ -217,10 +220,11 @@ textarea.small { min-height: 84px; font-size: 14px; }
           <select id="version"></select>
         </div>
         <div class="field">
-          <label class="label" for="quality">Qualität</label>
-          <select id="quality">
-            <option value="complex" selected>Gründlich (beste)</option>
-            <option value="default">Schneller</option>
+          <label class="label" for="brain">KI-Gehirn</label>
+          <select id="brain">
+            <option value="klein">Klein · schnell (ca. 1,5 GB)</option>
+            <option value="mittel" selected>Mittel (ca. 2,5 GB)</option>
+            <option value="gross">Gross · beste (ca. 5,5 GB)</option>
           </select>
         </div>
       </div>
@@ -234,10 +238,12 @@ textarea.small { min-height: 84px; font-size: 14px; }
         <div class="chips" id="chips"></div>
       </div>
 
-      <div id="no-ai" class="notice" hidden>Die KI läuft nur, wenn du diese Seite in Claude öffnest. Hier kannst du das Beispiel, die 3D-Vorschau, Fotos, Video und den ZIP-Download ausprobieren.</div>
+      <label class="pv-check" for="autofix"><input type="checkbox" id="autofix" checked> Fehler selbst reparieren (prüft und testet, bis zu 2 Runden)</label>
+      <div id="no-ai" class="notice bad" hidden></div>
       <button class="btn wide" id="go">Jetzt schmieden</button>
       <button class="btn stop wide" id="stop" hidden>Stopp</button>
-      <p class="hint">Gründlich dauert meist 1–3 Minuten. Du siehst live, welche Datei gerade entsteht.</p>
+      <div class="loadbar" id="loadbar" hidden><div></div></div>
+      <p class="hint">Die KI läuft direkt auf deinem Computer – ohne Konto und kostenlos. Beim ersten Mal lädt sie ihr Gehirn einmal herunter, danach startet sie schnell und geht auch offline.</p>
     </section>
 
     <!-- WERKBANK -->
@@ -459,9 +465,9 @@ Fachregeln:
     const extra = lines.join("\n");
     return `PROJEKTART: Fabric-Mod (Minecraft ${v}, Java ${java}), als komplettes Gradle-Projekt.
 Fachregeln:
-- Pflichtdateien: build.gradle (Plugin fabric-loom), settings.gradle (pluginManagement mit maven https://maven.fabricmc.net/ und gradlePluginPortal), gradle.properties (minecraft_version, yarn_mappings, loader_version, loom_version, fabric_version, mod_version, maven_group, archives_base_name), gradle/wrapper/gradle-wrapper.properties (distributionUrl auf eine Gradle-Version, die zur Loom-Version passt), src/main/resources/fabric.mod.json, Java-Klassen unter src/main/java/<paket>/.
-- Benutze nur Versionsnummern (Loom, Yarn, Loader, Fabric API, Gradle), bei denen du sicher bist, dass sie für Minecraft ${v} existieren. Lieber eine etwas ältere, sichere Version.
-- Yarn-Mappings und Fabric API (Abhängigkeit "fabric-api" in fabric.mod.json, Java >=${java}, minecraft ~${v}).
+- build.gradle, settings.gradle, gradle.properties und gradle-wrapper.properties erzeugt die Werkstatt automatisch mit den echten Versionsnummern. Schreibe diese vier Dateien NICHT.
+- Du schreibst: src/main/resources/fabric.mod.json, die Java-Klassen unter src/main/java/<paket>/, alle assets und data.
+- Yarn-Mappings und Fabric API. In fabric.mod.json: "version": "\${version}", depends mit "fabricloader": "*", "fabric-api": "*", "minecraft": "~${v}", "java": ">=${java}".
 - Mod-ID: nur Kleinbuchstaben und Unterstriche. Paketname passend, z.B. com.schmiede.<modid>. Der Einstiegspunkt in fabric.mod.json muss exakt auf eine existierende Klasse zeigen, die ModInitializer implementiert. Clientcode (Rendering, Tasten) gehört in einen eigenen "client"-Einstiegspunkt.
 - Identifier: ${ident}. ${reg}
 ${extra}
@@ -690,6 +696,8 @@ function check(p, mode, version) {
     const props = byPath["gradle.properties"]?.content || "";
     const mc = props.match(/minecraft_version\s*=\s*(\S+)/);
     if (mc && mc[1] !== version) res.push({ level: "warn", text: `gradle.properties nennt Minecraft ${mc[1]}, gewählt ist ${version}` });
+    if (p.fabricOnline === true) res.push({ level: "ok", text: "Gradle-Dateien mit echten Versionen von fabricmc.net" });
+    if (p.fabricOnline === false) res.push({ level: "warn", text: "fabricmc.net war nicht erreichbar: Versionsnummern in gradle.properties bitte prüfen" });
     if (!paths.has("gradle/wrapper/gradle-wrapper.properties")) res.push({ level: "warn", text: "gradle-wrapper.properties fehlt (IntelliJ nimmt dann seine eigene Gradle-Version)" });
     const java = p.files.filter(f => f.path.endsWith(".java"));
     for (const f of java) {
@@ -749,7 +757,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} }
 };
 const state = { mode: "shader", version: "1.21.1", project: null, projMode: "shader", projVersion: "1.21.1", isExample: true, selected: 0, busy: false, ctl: null, followLast: false, rev: 0 };
-let sample = null, downloads = null;
+let downloads = null;
 
 function setMode(m) {
   state.mode = m;
@@ -813,8 +821,8 @@ function renderProject(writing) {
 
   const ready = !writing && p.files.length > 0;
   $("zip").disabled = !ready;
-  $("do-change").disabled = !ready || !sample;
-  $("do-fix").disabled = !ready || !sample;
+  $("do-change").disabled = !ready;
+  $("do-fix").disabled = !ready;
   updatePreview(writing);
 }
 function renderViewer() {
@@ -843,51 +851,310 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
 }
 
-/* ---------- KI-Aufruf ---------- */
-const ERRORS = {
-  not_granted: "Du hast der Seite nicht erlaubt, Claude zu benutzen. Lade die Seite neu, um es nochmal zu erlauben.",
-  sampling_disabled: "Claude ist für dieses Konto hier nicht verfügbar.",
-  rate_limited: "Gerade zu viele Anfragen oder dein Nutzungslimit ist erreicht. Warte ein bisschen und versuche es dann nochmal.",
-  session_expired: "Du bist abgemeldet. Melde dich bei Claude neu an.",
-  refused: "Claude wollte das so nicht bauen. Formuliere die Beschreibung anders.",
-  prompt_too_large: "Das Projekt ist zu gross zum Mitschicken. Beschreibe die Änderung neu als eigenes Projekt.",
-  empty_completion: "Es kam keine Antwort. Versuche es mit einer kürzeren Beschreibung."
+/* =====================================================================
+   EIGENE KI
+   Ein Sprachmodell, das direkt im Browser auf deiner Grafikkarte läuft
+   (WebLLM + WebGPU). Kein Konto, kein Server, nach dem ersten Laden
+   auch offline. Dazu: festes Fachwissen (RULES), Beispiele, echte
+   Gradle-Dateien und eine Selbstreparatur, die Prüfung und
+   3D-Vorschau nutzt.
+   ===================================================================== */
+const BRAINS = {
+  klein: { id: "Qwen3.5-2B-q4f16_1-MLC", alt: "Qwen3.5-2B-q4f32_1-MLC", name: "Klein" },
+  mittel: { id: "Qwen3.5-4B-q4f16_1-MLC", alt: "Qwen3.5-4B-q4f32_1-MLC", name: "Mittel" },
+  gross: { id: "Qwen3.5-9B-q4f16_1-MLC", alt: "Qwen3.5-9B-q4f32_1-MLC", name: "Gross" }
 };
-async function run(prompt, label) {
-  if (!sample || state.busy) return;
+const WEBLLM_URL = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.86/+esm";
+const Brain = (() => {
+  let webllm = null, engine = null, loadedKey = null, ctx = 4096, busyLoad = null;
+  async function support() {
+    if (!navigator.gpu) return { ok: false, why: "Dein Browser kann WebGPU nicht. Öffne die Seite in Chrome oder Edge." };
+    try {
+      const a = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+      if (!a) return { ok: false, why: "Keine passende Grafikkarte für WebGPU gefunden." };
+      return { ok: true, f16: a.features.has("shader-f16") };
+    } catch { return { ok: false, why: "WebGPU ist in diesem Fenster blockiert." }; }
+  }
+  async function load(key, onProgress) {
+    if (engine && loadedKey === key) return engine;
+    if (busyLoad) { try { await busyLoad; } catch {} if (engine && loadedKey === key) return engine; }
+    busyLoad = (async () => {
+      const sup = await support();
+      if (!sup.ok) throw { code: "no_webgpu", message: sup.why };
+      if (!webllm) {
+        try { webllm = await import(WEBLLM_URL); }
+        catch { throw { code: "no_download", message: "Die KI-Software konnte nicht geladen werden. Öffne die Seite auf GitHub: mikkel-thiemann.github.io/block-schmiede" }; }
+      }
+      if (engine) { try { await engine.unload(); } catch {} engine = null; loadedKey = null; }
+      const b = BRAINS[key], id = sup.f16 ? b.id : b.alt;
+      const opts = { initProgressCallback: r => onProgress && onProgress(r) };
+      for (const size of [16384, 8192, 4096]) {
+        try { engine = await webllm.CreateMLCEngine(id, opts, { context_window_size: size }); ctx = size; break; }
+        catch (e) { if (size === 4096) throw { code: "load_failed", message: "Das KI-Gehirn konnte nicht starten (" + String(e && e.message || e).slice(0, 140) + "). Nimm ein kleineres Gehirn." }; }
+      }
+      loadedKey = key;
+      return engine;
+    })();
+    try { return await busyLoad; } finally { busyLoad = null; }
+  }
+  async function generate(key, messages, { onText, signal, onProgress, maxTokens }) {
+    const eng = await load(key, onProgress);
+    if (signal && signal.aborted) throw { code: "cancelled" };
+    const stop = () => { try { eng.interruptGenerate(); } catch {} };
+    if (signal) signal.addEventListener("abort", stop);
+    let text = "", finish = null;
+    const clean = t => t.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+    try {
+      const stream = await eng.chat.completions.create({
+        messages, stream: true, temperature: 0.25, top_p: 0.9,
+        max_tokens: Math.max(1024, Math.min(maxTokens || 7000, ctx - 1024)),
+        extra_body: { enable_thinking: false }
+      });
+      for await (const ch of stream) {
+        const c = ch.choices && ch.choices[0];
+        const d = c && c.delta && c.delta.content;
+        if (d) { text += d; if (onText) onText({ text: clean(text) }); }
+        if (c && c.finish_reason) finish = c.finish_reason;
+      }
+    } catch (e) {
+      if (signal && signal.aborted) throw { code: "cancelled", text: clean(text) };
+      throw { code: "gen_failed", text: clean(text), message: String(e && e.message || e).slice(0, 200) };
+    } finally { if (signal) signal.removeEventListener("abort", stop); }
+    if (signal && signal.aborted) throw { code: "cancelled", text: clean(text) };
+    return { text: clean(text), truncated: finish === "length" };
+  }
+  return { generate, support, context: () => ctx, loaded: () => loadedKey };
+})();
+
+/* ---------- Beispiele, damit auch kleine Modelle das Format treffen ---------- */
+function exampleFor(mode, version) {
+  if (mode === "shader") return { q: "AUFTRAG DES SPIELERS:\nWarmes Abendlicht mit kräftigeren Farben und einer weichen Vignette.", a: EXAMPLE_RAW };
+  const I = vinfo(version), fn = I.singular ? "function" : "functions";
+  return {
+    q: "AUFTRAG DES SPIELERS:\nJeder Spieler bekommt beim ersten Betreten ein Brot und eine Begrüssung.",
+    a: `@@PROJEKT: Willkommens-Paket
+@@INFO: Neue Spieler bekommen einmalig ein Brot und eine goldene Begrüssung im Chat.
+@@DATEI: pack.mcmeta
+{"pack":{"pack_format":${I.pf},"description":"Willkommens-Paket"}}
+@@ENDE
+@@DATEI: data/minecraft/tags/${fn}/load.json
+{"values":["schmiede:load"]}
+@@ENDE
+@@DATEI: data/minecraft/tags/${fn}/tick.json
+{"values":["schmiede:tick"]}
+@@ENDE
+@@DATEI: data/schmiede/${fn}/load.mcfunction
+# Wird beim Laden ausgeführt
+tellraw @a {"text":"Willkommens-Paket geladen","color":"gold"}
+@@ENDE
+@@DATEI: data/schmiede/${fn}/tick.mcfunction
+# Nur Spieler ohne Tag bekommen das Paket
+give @a[tag=!schmiede_begruesst] bread 1
+tellraw @a[tag=!schmiede_begruesst] {"text":"Willkommen auf dem Server!","color":"gold"}
+tag @a[tag=!schmiede_begruesst] add schmiede_begruesst
+@@ENDE
+@@ANLEITUNG
+Lade die ZIP herunter.
+Lege sie in den Ordner .minecraft/saves/<Welt>/datapacks.
+Tippe im Spiel /reload ein.
+@@FERTIG`
+  };
+}
+
+function systemPrompt(mode, version) {
+  return `Du bist die Block-Schmiede KI, eine KI, die nur dafür gebaut ist, Minecraft-Shaderpacks, Fabric-Mods und Datapacks zu erstellen. Du lieferst Dateien, die beim ersten Versuch funktionieren.
+
+${RULES[mode](version)}
+
+${FORMAT}`;
+}
+
+/* Projekt für eine Änderung mitschicken: wichtige Dateien ganz, der Rest nur als Name */
+function serializeBudget(p, budget, focus = []) {
+  const order = [...p.files].sort((a, b) => (focus.includes(b.path) ? 1 : 0) - (focus.includes(a.path) ? 1 : 0));
+  let used = 0, s = `@@PROJEKT: ${p.name}\n@@INFO: ${p.info}\n`;
+  const skipped = [];
+  for (const f of order) {
+    const block = `${f.type === "image" ? "@@BILD" : "@@DATEI"}: ${f.path}\n${f.content.replace(/\n$/, "")}\n@@ENDE\n`;
+    if (used + block.length > budget && !focus.includes(f.path)) { skipped.push(f.path); continue; }
+    s += block; used += block.length;
+  }
+  if (skipped.length) s += `(Diese Dateien gibt es auch, Inhalt hier weggelassen: ${skipped.join(", ")})\n`;
+  return s + "@@FERTIG";
+}
+function mergeProject(base, upd) {
+  const files = base.files.map(f => f);
+  for (const f of upd.files) {
+    const i = files.findIndex(o => o.path === f.path);
+    if (i >= 0) files[i] = f; else files.push(f);
+  }
+  return { name: upd.name || base.name, info: upd.info || base.info, files, guide: upd.guide.length ? upd.guide : base.guide, done: upd.done };
+}
+
+/* ---------- Echte Gradle-Dateien für Fabric-Mods ---------- */
+const fabricCache = {};
+async function fabricVersions(mc) {
+  if (fabricCache[mc]) return fabricCache[mc];
+  const out = { minecraft: mc, loom: "1.11-SNAPSHOT", gradle: "8.14.3", online: false };
+  const get = async (u, asText) => { const r = await fetch(u); if (!r.ok) throw new Error(String(r.status)); return asText ? r.text() : r.json(); };
+  try {
+    const [yarn, loader, fapi] = await Promise.all([
+      get(`https://meta.fabricmc.net/v2/versions/yarn/${mc}`),
+      get("https://meta.fabricmc.net/v2/versions/loader"),
+      get("https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/maven-metadata.xml", true)
+    ]);
+    out.yarn = yarn[0] && yarn[0].version;
+    const st = loader.find(l => l.stable) || loader[0]; out.loader = st && st.version;
+    const vs = [...fapi.matchAll(/<version>([^<]+)<\/version>/g)].map(m => m[1]).filter(v => v.endsWith("+" + mc));
+    out.fabric = vs[vs.length - 1];
+    out.online = !!(out.yarn && out.loader && out.fabric);
+    if (out.online) fabricCache[mc] = out;
+  } catch {}
+  return out;
+}
+function propsOf(text) { const o = {}; for (const l of (text || "").split("\n")) { const m = l.match(/^\s*([\w.]+)\s*=\s*(.*?)\s*$/); if (m) o[m[1]] = m[2]; } return o; }
+async function applyFabricScaffold(p, mc) {
+  const fmj = p.files.find(f => f.path.endsWith("fabric.mod.json"));
+  let id = "meinmod"; try { id = JSON.parse(fmj.content).id || id; } catch {}
+  const old = propsOf((p.files.find(f => f.path === "gradle.properties") || {}).content);
+  const v = await fabricVersions(mc), java = vinfo(mc).java;
+  const jv = java === 8 ? "VERSION_1_8" : "VERSION_" + java;
+  const files = {
+    "settings.gradle": `pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+`,
+    "build.gradle": `plugins {
+    id 'fabric-loom' version "\${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:\${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:\${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:\${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:\${project.fabric_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = ${java}
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.${jv}
+    targetCompatibility = JavaVersion.${jv}
+}
+`,
+    "gradle.properties": `# Von der Block-Schmiede ${v.online ? "mit echten Versionen von fabricmc.net" : "erstellt (Versionen nicht online geprüft)"}
+org.gradle.jvmargs=-Xmx2G
+org.gradle.parallel=true
+
+minecraft_version=${mc}
+yarn_mappings=${v.yarn || old.yarn_mappings || ""}
+loader_version=${v.loader || old.loader_version || ""}
+loom_version=${v.loom}
+
+mod_version=${old.mod_version || "1.0.0"}
+maven_group=${old.maven_group || "com.schmiede"}
+archives_base_name=${id}
+
+fabric_version=${v.fabric || old.fabric_version || ""}
+`,
+    "gradle/wrapper/gradle-wrapper.properties": `distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\\://services.gradle.org/distributions/gradle-${v.gradle}-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+`
+  };
+  for (const [path, content] of Object.entries(files)) {
+    const f = { path, type: "text", content, closed: true, scaffold: true };
+    const i = p.files.findIndex(o => o.path === path);
+    if (i >= 0) p.files[i] = f; else p.files.push(f);
+  }
+  p.fabricOnline = v.online;
+}
+
+/* ---------- Bauen ---------- */
+const ERRORS = {
+  no_webgpu: null, no_download: null, load_failed: null,
+  gen_failed: "Die KI ist beim Schreiben abgestürzt. Versuche es nochmal oder nimm ein kleineres Gehirn."
+};
+let lastBuildTask = null;
+function progressText(r) {
+  const pct = Math.round((r.progress || 0) * 100);
+  const bar = $("loadbar"); bar.hidden = false; bar.firstElementChild.style.width = pct + "%";
+  return /cache|Loading model from cache/i.test(r.text || "") ? `KI-Gehirn wird gestartet … ${pct} %` : `KI-Gehirn wird heruntergeladen (nur beim ersten Mal) … ${pct} %`;
+}
+async function run(messages, label, { partialOf = null, round = 0 } = {}) {
+  if (state.busy) return;
   state.busy = true; state.followLast = true;
   state.ctl = new AbortController();
   const before = { project: state.project, projMode: state.projMode, projVersion: state.projVersion, isExample: state.isExample };
   state.projMode = state.mode; state.projVersion = state.version; state.isExample = false;
-  state.project = { name: "", info: "", files: [], guide: [] };
+  state.project = partialOf ? { ...partialOf, files: [...partialOf.files] } : { name: "", info: "", files: [], guide: [] };
   $("go").hidden = true; $("stop").hidden = false;
-  setStatus("work", label + " Claude denkt nach …");
+  setStatus("work", label + " KI startet …");
   renderProject(true);
-  let lastText = "";
+  const show = text => {
+    const upd = parse(text);
+    state.project = partialOf ? mergeProject(partialOf, upd) : upd;
+    const f = upd.files[upd.files.length - 1];
+    setStatus("work", label + " " + (f && !f.closed ? `Schreibt ${f.path} …` : upd.guide.length ? "Schreibt die Anleitung …" : upd.files.length ? `${upd.files.length} Dateien fertig, weiter geht's …` : "Denkt nach …"));
+    renderProject(true);
+  };
+  let ok = false;
   try {
-    const { text, truncated } = await sample(prompt, {
-      modelTier: $("quality").value, cache: false, signal: state.ctl.signal,
-      onText: ({ text }) => {
-        lastText = text;
-        state.project = parse(text);
-        const f = state.project.files[state.project.files.length - 1];
-        setStatus("work", f && !f.closed ? `Schreibt ${f.path} …` : state.project.guide.length ? "Schreibt die Anleitung …" : `${state.project.files.length} Dateien fertig, weiter geht's …`);
-        renderProject(true);
-      }
+    const { text, truncated } = await Brain.generate($("brain").value, messages, {
+      signal: state.ctl.signal, maxTokens: 7000,
+      onProgress: r => setStatus("work", progressText(r)),
+      onText: ({ text }) => { $("loadbar").hidden = true; show(text); }
     });
-    lastText = text;
-    state.project = parse(text);
-    finish(truncated ? "warn" : "ok", truncated ? "Die Antwort wurde abgeschnitten. Unvollständige Dateien sind markiert. Bitte um ein kleineres Projekt." : `Fertig: ${state.project.files.length} Dateien gebaut und geprüft.`);
+    show(text);
+    if (!state.project.files.length) throw { code: "empty" };
+    if (state.projMode === "mod") { setStatus("work", "Hole echte Fabric-Versionen …"); await applyFabricScaffold(state.project, state.projVersion); }
+    ok = true;
+    finish(truncated ? "warn" : "ok", truncated ? "Die Antwort war zu lang und wurde abgeschnitten. Unvollständige Dateien sind markiert." : `Fertig: ${state.project.files.length} Dateien.`);
   } catch (e) {
-    if (e && e.text) { lastText = e.text; state.project = parse(e.text); }
+    $("loadbar").hidden = true;
+    if (e && e.text) show(e.text);
     if (e && e.code === "cancelled") finish("err", "Gestoppt. Was schon fertig war, bleibt hier.");
-    else if (e && e.code === "not_granted") { hideAI(); finish("err", ERRORS.not_granted); }
-    else finish("err", (e && ERRORS[e.code]) || "Die Verbindung ist abgebrochen. Versuche es nochmal.");
-    if (!state.project.files.length) Object.assign(state, before);
+    else if (e && e.code === "empty") finish("err", "Die KI hat keine Dateien im richtigen Format geschrieben. Versuch es nochmal oder nimm ein grösseres Gehirn.");
+    else if (e && (e.code === "no_webgpu" || e.code === "no_download" || e.code === "load_failed")) { finish("err", e.message); if (e.code !== "load_failed") showNoAI(e.message); }
+    else finish("err", (e && ERRORS[e.code]) || (e && e.message) || "Etwas ist schiefgegangen. Versuche es nochmal.");
+    if (!state.project.files.length || (partialOf && state.project === partialOf)) Object.assign(state, before);
   }
-  if (state.project.files.length && !state.isExample) store.set("last-project", JSON.stringify({ raw: lastText, mode: state.projMode, version: state.projVersion }));
+  if (state.project.files.length && !state.isExample) store.set("last-project", JSON.stringify({ raw: serialize(state.project), mode: state.projMode, version: state.projVersion }));
   state.rev++;
   renderProject(false);
+  if (ok) await selfRepair(round);
 }
 function finish(kind, msg) {
   state.busy = false; state.followLast = false; state.ctl = null;
@@ -895,48 +1162,56 @@ function finish(kind, msg) {
   setStatus(kind === "warn" ? "err" : kind, msg);
   if (state.project.files.length) state.selected = Math.min(state.selected, state.project.files.length - 1);
 }
-function hideAI() {
-  sample = null;
-  $("go").disabled = true; $("no-ai").hidden = false;
+function showNoAI(text) { const n = $("no-ai"); n.textContent = text; n.hidden = false; }
+
+/* Selbstreparatur: Prüfung + echter Shader-Test, dann bis zu 2 Reparaturrunden */
+async function selfRepair(round) {
+  if (!$("autofix").checked) return;
+  const p = state.project;
+  const problems = check(p, state.projMode, state.projVersion).filter(r => r.level === "err").map(r => r.text);
+  if (state.projMode === "shader") { const err = Preview.testCompile(p, state.projVersion); if (err) problems.push(err); }
+  if (!problems.length) { if (round > 0) setStatus("ok", `Repariert! Nach ${round} Runde${round > 1 ? "n" : ""} keine Fehler mehr.`); return; }
+  if (round >= 2) { setStatus("err", "Ein paar Fehler sind nach 2 Reparaturrunden noch da. Nutze den Fehler-Doktor oder ein grösseres Gehirn."); return; }
+  const focus = p.files.filter(f => problems.some(t => t.includes(f.path) || t.includes(f.path.split("/").pop().replace(/\.(vsh|fsh)$/, "")))).map(f => f.path);
+  const task = `DIE AUTOMATISCHE PRÜFUNG HAT FEHLER GEFUNDEN:\n- ${problems.join("\n- ").slice(0, 4000)}\n\nRepariere genau diese Fehler.`;
+  await runChange(task, `Selbstreparatur ${round + 1}/2:`, focus, round + 1);
+}
+
+function budgetChars() { return Brain.context() >= 16384 ? 18000 : Brain.context() >= 8192 ? 7000 : 2500; }
+async function runChange(task, label, focus, round) {
+  const p = state.project;
+  const messages = [
+    { role: "system", content: systemPrompt(state.projMode, state.projVersion) },
+    { role: "user", content: `AKTUELLES PROJEKT:\n${serializeBudget(p, budgetChars(), focus)}\n\n${task}\n\nGib NUR die Dateien aus, die du änderst oder neu anlegst, jede KOMPLETT. Beginne mit @@PROJEKT und @@INFO (ein Satz, was du geändert hast) und ende mit @@FERTIG.` }
+  ];
+  state.mode = state.projMode; state.version = state.projVersion;
+  await run(messages, label, { partialOf: p, round });
 }
 
 function buildNew() {
   const desc = $("desc").value.trim();
   if (!desc) { toast("Schreib zuerst, was gebaut werden soll."); $("desc").focus(); return; }
-  const prompt = `Du bist die Block-Schmiede, eine KI, die nur dafür gebaut ist, perfekte Minecraft-Shaderpacks, Fabric-Mods und Datapacks zu erstellen. Du kennst Minecraft-Modding bis ins letzte Detail und lieferst Dateien, die beim ersten Versuch funktionieren.
-
-${RULES[state.mode](state.version)}
-
-${FORMAT}
-
-AUFTRAG DES SPIELERS:
-${desc}`;
-  run(prompt, "");
+  const ex = exampleFor(state.mode, state.version);
+  const messages = [
+    { role: "system", content: systemPrompt(state.mode, state.version) },
+    { role: "user", content: ex.q },
+    { role: "assistant", content: ex.a },
+    { role: "user", content: "AUFTRAG DES SPIELERS:\n" + desc }
+  ];
+  run(messages, "");
 }
 function buildChange(kind) {
-  const p = state.project; if (!p || !p.files.length) return;
+  const p = state.project; if (!p || !p.files.length || state.busy) return;
   const field = kind === "fix" ? $("errlog") : $("change");
   const txt = field.value.trim();
   if (!txt) { toast(kind === "fix" ? "Füge zuerst die Fehlermeldung ein." : "Schreib zuerst, was anders sein soll."); field.focus(); return; }
-  state.mode = state.projMode; state.version = state.projVersion;
-  $("version").value = state.version;
-  document.querySelectorAll(".mode").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
+  $("version").value = state.projVersion;
+  document.querySelectorAll(".mode").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === state.projMode)));
   const task = kind === "fix"
-    ? `FEHLERMELDUNG BEIM SPIELER:\n${txt.slice(0, 20000)}\n\nFinde die genaue Ursache und repariere das Projekt. Erkläre in @@INFO in einem Satz, was falsch war und was du geändert hast.`
-    : `GEWÜNSCHTE ÄNDERUNG:\n${txt}\n\nBaue die Änderung ein. Erkläre in @@INFO in einem Satz, was neu ist.`;
-  const prompt = `Du bist die Block-Schmiede, eine KI, die nur dafür gebaut ist, perfekte Minecraft-Shaderpacks, Fabric-Mods und Datapacks zu erstellen.
-
-${RULES[state.mode](state.version)}
-
-${FORMAT}
-
-AKTUELLES PROJEKT (alle Dateien im selben Format):
-${serialize(p)}
-
-${task}
-
-Gib danach das KOMPLETTE Projekt mit ALLEN Dateien neu aus, auch die unveränderten, damit nichts verloren geht.`;
-  run(prompt, kind === "fix" ? "Fehler-Doktor:" : "Änderung:").then(() => { if (state.project.files.length) field.value = ""; });
+    ? `FEHLERMELDUNG BEIM SPIELER:\n${txt.slice(0, 6000)}\n\nFinde die genaue Ursache und repariere das Projekt.`
+    : `GEWÜNSCHTE ÄNDERUNG:\n${txt}\n\nBaue die Änderung ein.`;
+  const focus = p.files.filter(f => txt.includes(f.path.split("/").pop())).map(f => f.path);
+  runChange(task, kind === "fix" ? "Fehler-Doktor:" : "Änderung:", focus, 0).then(() => { if (!state.busy) field.value = ""; });
 }
 
 /* ---------- ZIP ---------- */
@@ -1729,6 +2004,11 @@ void main() { gl_FragColor = vec4(texture2D(colortex0, texcoord).rgb, 1.0); }` }
     T = makeTextures();
     VAO = { sky: makeVAO(buildSky(), true), sun: makeVAO(buildCelestial(22)), moon: makeVAO(buildCelestial(16)), screen: makeVAO(buildScreenQuad()) };
   }
+  api.testCompile = (proj, version) => {
+    if (!gl) return null;
+    try { const P = compilePack(proj, version); freePack(P); return null; }
+    catch (e) { return `Shader-Test fehlgeschlagen in ${e.file || "?"}: ${e.message}\n${(e.log || "").slice(0, 1500)}`; }
+  };
   api.pause = () => { pv.active = false; $("pv-sub").textContent = "Die Vorschau kommt, sobald alles fertig ist."; };
   api.show = (proj, mode, version, rev) => {
     api.rev = rev; project = proj; projVersion = version;
@@ -1805,11 +2085,11 @@ renderProject(false);
 setStatus("", restored ? "Dein letztes Projekt ist wieder da." : "Das ist ein Beispiel. Beschreibe links dein eigenes Projekt.");
 
 if (window.claude && window.claude.use) {
-  window.claude.use("sample").then(s => { sample = s; if (!s) hideAI(); else renderProject(false); }).catch(hideAI);
   window.claude.use("downloads").then(d => { downloads = d; }).catch(() => {});
-} else {
-  hideAI();
 }
+try { const b = store.get("brain"); if (b && BRAINS[b]) $("brain").value = b; } catch {}
+$("brain").addEventListener("change", e => store.set("brain", e.target.value));
+Brain.support().then(s => { if (!s.ok) { showNoAI(s.why + " Das Beispiel, die 3D-Vorschau und der Download gehen trotzdem."); $("go").disabled = true; } });
 })();
 </script>
 
