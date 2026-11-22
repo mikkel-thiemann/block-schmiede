@@ -7,7 +7,9 @@ Eine Werkstatt für Minecraft: Beschreibe einen **Shader**, eine **Fabric-Mod** 
 ## Was die Seite kann
 
 - **Eigene KI:** Ein Sprachmodell (Qwen3.5, klein/mittel/gross) läuft direkt im Browser auf deiner Grafikkarte (WebLLM + WebGPU). Kein Konto, keine Kosten, nach dem ersten Download auch offline. Braucht Chrome oder Edge.
-- **Selbstreparatur:** Nach dem Bauen prüft die Seite alle Dateien und testet Shader in der 3D-Vorschau. Findet sie Fehler, repariert die KI sie selbst (bis zu 2 Runden).
+- **Wissensbibliothek:** Geprüfte Bausteine für jede Minecraft-Version (Items, Blöcke, Essen, Werkzeuge, Rezepte, Erz-Erzeugung, Shader für Wasser, Wind, Nebel, Himmel, Schatten, Comic-Look, Datapack-Zähler, Trigger und mehr). Die KI sucht sich passend zum Auftrag die richtigen heraus.
+- **Gründlich-Modus:** Die KI plant zuerst alle Dateien und schreibt dann jede einzeln, mit den schon fertigen Dateien vor Augen.
+- **Selbstreparatur:** Nach dem Bauen prüft die Seite alle Dateien (Java-Klassen, Klammern, fehlende Klassen und Texturen, unbekannte Befehle, JSON) und testet Shader in der 3D-Vorschau. Findet sie Fehler, repariert die KI sie selbst (bis zu 3 Runden).
 - **Echte Fabric-Versionen:** Für Mods erzeugt die Seite build.gradle, settings.gradle und gradle.properties selbst, mit den aktuellen Versionen von fabricmc.net.
 - **KI-Bauen:** Shaderpacks für Iris/OptiFine, Fabric-Mods als Gradle-Projekt (mit Pixel-Texturen) und Datapacks für Minecraft 1.16.5 bis 1.21.8. Die KI kennt die Unterschiede zwischen den Versionen (pack_format, Ordnernamen, Item-Komponenten, Registry-Code).
 - **Automatische Prüfung:** kaputtes JSON, fehlende Dateien, falsche Ordnernamen, fehlende Shader-Partner und mehr.

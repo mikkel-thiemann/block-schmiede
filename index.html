@@ -222,8 +222,8 @@ textarea.small { min-height: 84px; font-size: 14px; }
           <label class="label" for="brain">KI-Gehirn</label>
           <select id="brain">
             <option value="klein">Klein · schnell (ca. 1,5 GB)</option>
-            <option value="mittel" selected>Mittel (ca. 2,5 GB)</option>
-            <option value="gross">Gross · beste (ca. 5,5 GB)</option>
+            <option value="mittel">Mittel (ca. 2,5 GB)</option>
+            <option value="gross" selected>Gross · beste (ca. 5,5 GB)</option>
           </select>
         </div>
       </div>
@@ -237,7 +237,8 @@ textarea.small { min-height: 84px; font-size: 14px; }
         <div class="chips" id="chips"></div>
       </div>
 
-      <label class="pv-check" for="autofix"><input type="checkbox" id="autofix" checked> Fehler selbst reparieren (prüft und testet, bis zu 2 Runden)</label>
+      <label class="pv-check" for="deep"><input type="checkbox" id="deep" checked> Gründlich: erst planen, dann jede Datei einzeln schreiben</label>
+      <label class="pv-check" for="autofix"><input type="checkbox" id="autofix" checked> Fehler selbst reparieren (prüft und testet, bis zu 3 Runden)</label>
       <div id="no-ai" class="notice bad" hidden></div>
       <button class="btn wide" id="go">Jetzt schmieden</button>
       <button class="btn stop wide" id="stop" hidden>Stopp</button>
@@ -623,6 +624,7 @@ function serialize(p) {
 }
 
 /* ---------- Prüfung ---------- */
+const MC_COMMANDS = new Set("advancement attribute ban bossbar clear clone damage data datapack debug defaultgamemode deop dialog difficulty effect enchant execute experience xp fill fillbiome forceload function gamemode gamerule give help item jfr kick kill list locate loot me msg tell w op pardon particle perf place playsound random recipe reload return ride rotate save-all say schedule scoreboard seed setblock setidletimeout setworldspawn spawnpoint spectate spreadplayers stop stopsound stopwatch summon tag team teammsg tm teleport tp tellraw test tick time title transfer trigger version waypoint weather whitelist worldborder".split(" "));
 function check(p, mode, version) {
   const res = [];
   const paths = new Set(p.files.map(f => f.path));
@@ -704,6 +706,19 @@ function check(p, mode, version) {
       const dir = f.path.replace(/^src\/(main|client)\/java\//, "").split("/").slice(0, -1).join(".");
       if (pk && pk !== dir) res.push({ level: "err", text: `${f.path}: package ${pk} passt nicht zum Ordner` });
     }
+    const classes = new Set(java.map(f => f.path.split("/").pop().replace(/\.java$/, "")));
+    for (const f of java) {
+      const fname = f.path.split("/").pop().replace(/\.java$/, "");
+      const decl = f.content.match(/^\s*public\s+(?:final\s+|abstract\s+)*(?:class|interface|enum|record)\s+(\w+)/m);
+      if (decl && decl[1] !== fname) res.push({ level: "err", text: `${f.path}: Klasse heisst ${decl[1]}, Datei heisst ${fname}` });
+      const code = f.content.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\/\/.*$|\/\*[\s\S]*?\*\//gm, "");
+      const open = (code.match(/{/g) || []).length, close = (code.match(/}/g) || []).length;
+      if (open !== close) res.push({ level: "err", text: `${f.path}: Klammern { } passen nicht (${open} offen, ${close} zu)` });
+      if (!/^\s*package\s+[\w.]+\s*;/m.test(f.content)) res.push({ level: "err", text: `${f.path}: package-Zeile fehlt` });
+      for (const m of code.matchAll(/\b(Mod[A-Z]\w*)\.(init|register\w*|initialize)\s*\(/g)) {
+        if (!classes.has(m[1])) res.push({ level: "err", text: `${f.path} ruft ${m[1]}.${m[2]}() auf, aber ${m[1]}.java fehlt` });
+      }
+    }
     if (java.length) res.push({ level: "ok", text: `${java.length} Java-Klasse${java.length > 1 ? "n" : ""}` });
     const textureRefs = new Set();
     for (const f of p.files.filter(f => /assets\/[^/]+\/models\/.+\.json$/.test(f.path))) {
@@ -715,7 +730,7 @@ function check(p, mode, version) {
     for (const ref of textureRefs) {
       const [ns, rest] = ref.split(":");
       const tp = `src/main/resources/assets/${ns}/textures/${rest}.png`;
-      if (!paths.has(tp)) res.push({ level: "warn", text: `Textur fehlt: ${tp}` });
+      if (!paths.has(tp)) res.push({ level: "err", text: `Textur fehlt (als @@BILD anlegen): ${tp}` });
     }
   }
 
@@ -740,6 +755,23 @@ function check(p, mode, version) {
       if (f.path.endsWith(".mcfunction")) {
         const slash = f.content.split("\n").filter(l => /^\s*\//.test(l)).length;
         if (slash) res.push({ level: "err", text: `${f.path}: ${slash} Befehl(e) beginnen mit /` });
+        const bad = new Set();
+        for (const l of f.content.split("\n")) {
+          const t = l.trim(); if (!t || t.startsWith("#") || t.startsWith("$")) continue;
+          const cmd = t.replace(/^\//, "").split(/\s+/)[0];
+          if (!MC_COMMANDS.has(cmd)) bad.add(cmd);
+        }
+        if (bad.size) res.push({ level: "err", text: `${f.path}: unbekannte Befehle: ${[...bad].slice(0, 5).join(", ")}` });
+      }
+      const tagRef = f.path.match(/^data\/minecraft\/tags\/functions?\/(load|tick)\.json$/);
+      if (tagRef) {
+        try {
+          for (const val of JSON.parse(f.content).values || []) {
+            const id = typeof val === "string" ? val : val && val.id; if (!id || id.startsWith("#")) continue;
+            const [ns, fp] = id.includes(":") ? id.split(":") : ["minecraft", id];
+            if (!paths.has(`data/${ns}/function/${fp}.mcfunction`) && !paths.has(`data/${ns}/functions/${fp}.mcfunction`)) res.push({ level: "err", text: `${f.path} verweist auf ${id}, aber die Funktion fehlt` });
+          }
+        } catch {}
       }
     }
     const fns = p.files.filter(f => f.path.endsWith(".mcfunction")).length;
@@ -851,6 +883,643 @@ function toast(msg) {
 }
 
 /* =====================================================================
+   WISSENSBIBLIOTHEK
+   Geprüfte Bausteine, passend zur Minecraft-Version. Die KI sucht sich
+   die passenden heraus und baut darauf auf, statt alles neu zu erfinden.
+   ===================================================================== */
+const ERA = v => {
+  const I = vinfo(v);
+  return { ...I, v, old: !I.newRegistries, mid: I.newRegistries && !I.identOf, ident: I.identOf ? "Identifier.of" : "new Identifier", slf4j: atLeast(v, "1.18") };
+};
+const KNOWLEDGE = [
+  /* ---------------- SHADER ---------------- */
+  { mode: "shader", id: "basis-bloecke", always: true, title: "Grundgerüst für Blöcke (gbuffers_terrain)", keys: [], text: () => `@@DATEI: shaders/gbuffers_terrain.vsh
+#version 120
+attribute vec4 mc_Entity;
+attribute vec2 mc_midTexCoord;
+uniform float frameTimeCounter;
+uniform vec3 cameraPosition;
+uniform mat4 gbufferModelView;
+uniform mat4 gbufferModelViewInverse;
+varying vec2 texcoord;
+varying vec2 lmcoord;
+varying vec4 glcolor;
+varying vec3 normal;
+void main() {
+    texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+    lmcoord  = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;
+    glcolor  = gl_Color;
+    normal   = normalize(gl_NormalMatrix * gl_Normal);
+    // Position relativ zum Spieler (für Wind, Wellen, Schatten)
+    vec4 pos = gbufferModelViewInverse * (gl_ModelViewMatrix * gl_Vertex);
+    gl_Position = gl_ProjectionMatrix * (gbufferModelView * pos);
+}
+@@ENDE
+@@DATEI: shaders/gbuffers_terrain.fsh
+#version 120
+uniform sampler2D texture;
+uniform sampler2D lightmap;
+varying vec2 texcoord;
+varying vec2 lmcoord;
+varying vec4 glcolor;
+varying vec3 normal;
+void main() {
+    vec4 color = texture2D(texture, texcoord) * glcolor;
+    if (color.a < 0.1) discard;
+    color.rgb *= texture2D(lightmap, lmcoord).rgb;
+    /* DRAWBUFFERS:02 */
+    gl_FragData[0] = color;
+    gl_FragData[1] = vec4(normal * 0.5 + 0.5, 1.0);
+}
+@@ENDE` },
+  { mode: "shader", id: "wind", title: "Wehende Blätter und Pflanzen", keys: ["wind", "weh", "blätter", "blaetter", "laub", "pflanze", "gras", "blume", "wiegen", "bewegen", "waving", "leaves"], text: () => `@@DATEI: shaders/block.properties
+block.10002=minecraft:oak_leaves minecraft:birch_leaves minecraft:spruce_leaves minecraft:jungle_leaves minecraft:acacia_leaves minecraft:dark_oak_leaves minecraft:mangrove_leaves minecraft:cherry_leaves minecraft:azalea_leaves
+block.10003=minecraft:short_grass minecraft:grass minecraft:tall_grass minecraft:fern minecraft:large_fern minecraft:dandelion minecraft:poppy minecraft:wheat
+@@ENDE
+(in gbuffers_terrain.vsh nach "vec4 pos = ..." einfügen:)
+    bool isLeaf  = mc_Entity.x == 10002.0;
+    bool isPlant = mc_Entity.x == 10003.0 && gl_MultiTexCoord0.t < mc_midTexCoord.t; // nur obere Hälfte
+    if (isLeaf || isPlant) {
+        vec3 w = pos.xyz + cameraPosition;
+        float t = frameTimeCounter * 2.0;
+        float strength = isLeaf ? 0.05 : 0.09;
+        pos.x += sin(t + w.x * 0.7 + w.z * 0.3) * strength;
+        pos.z += cos(t * 0.8 + w.z * 0.6 + w.y * 0.2) * strength;
+    }` },
+  { mode: "shader", id: "wasser", title: "Schönes Wasser mit Wellen und Glitzern (gbuffers_water)", keys: ["wasser", "water", "welle", "meer", "see", "glitzer", "spiegel", "ozean", "fluss"], text: () => `@@DATEI: shaders/block.properties
+block.10001=minecraft:water minecraft:flowing_water
+@@ENDE
+@@DATEI: shaders/gbuffers_water.vsh
+#version 120
+attribute vec4 mc_Entity;
+uniform float frameTimeCounter;
+uniform vec3 cameraPosition;
+uniform mat4 gbufferModelView;
+uniform mat4 gbufferModelViewInverse;
+varying vec2 texcoord;
+varying vec2 lmcoord;
+varying vec4 glcolor;
+varying vec3 normal;
+varying vec3 viewPos;
+varying float isWater;
+void main() {
+    texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+    lmcoord  = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;
+    glcolor  = gl_Color;
+    normal   = normalize(gl_NormalMatrix * gl_Normal);
+    isWater  = mc_Entity.x == 10001.0 ? 1.0 : 0.0;
+    vec4 pos = gbufferModelViewInverse * (gl_ModelViewMatrix * gl_Vertex);
+    if (isWater > 0.5) {
+        vec3 w = pos.xyz + cameraPosition;
+        pos.y += sin(frameTimeCounter * 1.6 + w.x * 0.8 + w.z * 0.5) * 0.04;
+    }
+    vec4 vp = gbufferModelView * pos;
+    viewPos = vp.xyz;
+    gl_Position = gl_ProjectionMatrix * vp;
+}
+@@ENDE
+@@DATEI: shaders/gbuffers_water.fsh
+#version 120
+uniform sampler2D texture;
+uniform sampler2D lightmap;
+uniform vec3 sunPosition;
+uniform float frameTimeCounter;
+varying vec2 texcoord;
+varying vec2 lmcoord;
+varying vec4 glcolor;
+varying vec3 normal;
+varying vec3 viewPos;
+varying float isWater;
+void main() {
+    vec4 color = texture2D(texture, texcoord) * glcolor;
+    color.rgb *= texture2D(lightmap, lmcoord).rgb;
+    if (isWater > 0.5) {
+        vec3 n = normalize(normal + vec3(sin(frameTimeCounter + viewPos.x), 0.0, cos(frameTimeCounter * 1.3 + viewPos.z)) * 0.03);
+        vec3 v = normalize(-viewPos);
+        vec3 h = normalize(normalize(sunPosition) + v);
+        float glint = pow(max(dot(n, h), 0.0), 160.0) * lmcoord.y;
+        float fresnel = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+        color.rgb = mix(color.rgb, vec3(0.05, 0.28, 0.6), 0.35) + vec3(glint * 2.5);
+        color.a = mix(0.55, 0.92, fresnel);
+    }
+    /* DRAWBUFFERS:0 */
+    gl_FragData[0] = color;
+}
+@@ENDE` },
+  { mode: "shader", id: "nebel", title: "Nebel und Atmosphäre aus der Tiefe (composite)", keys: ["nebel", "fog", "dunst", "atmosph", "weit", "entfernung", "gruselig", "grusel", "horror", "nebl"], text: () => `@@DATEI: shaders/composite.vsh
+#version 120
+varying vec2 texcoord;
+void main() {
+    gl_Position = ftransform();
+    texcoord = gl_MultiTexCoord0.xy;
+}
+@@ENDE
+@@DATEI: shaders/composite.fsh
+#version 120
+uniform sampler2D colortex0;
+uniform sampler2D depthtex0;
+uniform mat4 gbufferProjectionInverse;
+uniform vec3 fogColor;
+uniform float rainStrength;
+varying vec2 texcoord;
+vec3 viewPosFrom(vec2 uv, float depth) {
+    vec4 p = gbufferProjectionInverse * vec4(vec3(uv, depth) * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+}
+void main() {
+    vec3 color = texture2D(colortex0, texcoord).rgb;
+    float depth = texture2D(depthtex0, texcoord).r;
+    if (depth < 1.0) {
+        float dist = length(viewPosFrom(texcoord, depth));
+        float fog = 1.0 - exp(-dist * (0.008 + rainStrength * 0.02));
+        color = mix(color, fogColor, clamp(fog, 0.0, 1.0));
+    }
+    /* DRAWBUFFERS:0 */
+    gl_FragData[0] = vec4(color, 1.0);
+}
+@@ENDE` },
+  { mode: "shader", id: "himmel", title: "Eigener Himmel mit Sonnenschein (gbuffers_skybasic)", keys: ["himmel", "sky", "sonnenuntergang", "sonnenaufgang", "abend", "morgen", "sonne", "farbverlauf", "sunset"], text: () => `@@DATEI: shaders/gbuffers_skybasic.vsh
+#version 120
+varying vec3 viewPos;
+varying vec4 glcolor;
+void main() {
+    gl_Position = ftransform();
+    viewPos = (gl_ModelViewMatrix * gl_Vertex).xyz;
+    glcolor = gl_Color;
+}
+@@ENDE
+@@DATEI: shaders/gbuffers_skybasic.fsh
+#version 120
+uniform vec3 skyColor;
+uniform vec3 fogColor;
+uniform vec3 sunPosition;
+uniform vec3 upPosition;
+varying vec3 viewPos;
+varying vec4 glcolor;
+void main() {
+    vec3 dir = normalize(viewPos);
+    float up = dot(dir, normalize(upPosition));
+    float sun = max(dot(dir, normalize(sunPosition)), 0.0);
+    vec3 sky = mix(fogColor, skyColor, smoothstep(-0.1, 0.4, up));
+    sky += vec3(1.0, 0.55, 0.25) * pow(sun, 6.0) * 0.5;   // Sonnenschein
+    sky += vec3(1.0, 0.9, 0.7) * pow(sun, 400.0) * 3.0;  // Sonnenscheibe
+    /* DRAWBUFFERS:0 */
+    gl_FragData[0] = vec4(sky, glcolor.a);
+}
+@@ENDE` },
+  { mode: "shader", id: "farben", title: "Farben, Leuchten (Bloom) und Einstellungen (final)", keys: ["farb", "bunt", "sättig", "saettig", "kontrast", "hell", "leucht", "bloom", "glow", "warm", "kalt", "kino", "film", "realist", "schön", "schoen", "grafik"], text: () => `@@DATEI: shaders/final.vsh
+#version 120
+varying vec2 texcoord;
+void main() {
+    gl_Position = ftransform();
+    texcoord = gl_MultiTexCoord0.xy;
+}
+@@ENDE
+@@DATEI: shaders/final.fsh
+#version 120
+#define SATURATION 1.2 // [1.0 1.1 1.2 1.3 1.5]
+#define CONTRAST 1.1 // [1.0 1.05 1.1 1.2]
+#define BLOOM 1.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
+uniform sampler2D colortex0;
+uniform float viewWidth;
+uniform float viewHeight;
+varying vec2 texcoord;
+void main() {
+    vec3 c = texture2D(colortex0, texcoord).rgb;
+    vec2 px = 1.0 / vec2(viewWidth, viewHeight);
+    vec3 glow = vec3(0.0);
+    for (int i = -3; i <= 3; i++) {
+        for (int j = -3; j <= 3; j++) {
+            vec3 s = texture2D(colortex0, texcoord + vec2(float(i), float(j)) * px * 3.0).rgb;
+            glow += max(s - 0.7, 0.0);
+        }
+    }
+    c += glow / 49.0 * BLOOM;
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c = mix(vec3(l), c, SATURATION);
+    c = (c - 0.5) * CONTRAST + 0.5;
+    gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}
+@@ENDE
+@@DATEI: shaders/shaders.properties
+screen=SATURATION CONTRAST BLOOM
+sliders=SATURATION CONTRAST BLOOM
+@@ENDE
+@@DATEI: shaders/lang/de_de.lang
+option.SATURATION=Sättigung
+option.CONTRAST=Kontrast
+option.BLOOM=Leuchten
+@@ENDE` },
+  { mode: "shader", id: "comic", title: "Umrisse und Comic-Look (composite)", keys: ["comic", "umriss", "outline", "cartoon", "cel", "kanten", "zeichn", "anime"], text: () => `@@DATEI: shaders/composite.fsh
+#version 120
+uniform sampler2D colortex0;
+uniform sampler2D depthtex0;
+uniform float viewWidth;
+uniform float viewHeight;
+uniform float near;
+uniform float far;
+varying vec2 texcoord;
+float linearDepth(float d) { return (2.0 * near) / (far + near - d * (far - near)); }
+void main() {
+    vec3 color = texture2D(colortex0, texcoord).rgb;
+    vec2 px = 1.0 / vec2(viewWidth, viewHeight);
+    float d = linearDepth(texture2D(depthtex0, texcoord).r);
+    float e = 0.0;
+    e += abs(linearDepth(texture2D(depthtex0, texcoord + vec2(px.x, 0.0)).r) - d);
+    e += abs(linearDepth(texture2D(depthtex0, texcoord - vec2(px.x, 0.0)).r) - d);
+    e += abs(linearDepth(texture2D(depthtex0, texcoord + vec2(0.0, px.y)).r) - d);
+    e += abs(linearDepth(texture2D(depthtex0, texcoord - vec2(0.0, px.y)).r) - d);
+    float edge = smoothstep(0.02, 0.06, e / max(d, 0.0001));
+    color = floor(color * 6.0 + 0.5) / 6.0;   // wenige Farbstufen
+    color *= 1.0 - edge;                      // schwarze Umrisse
+    /* DRAWBUFFERS:0 */
+    gl_FragData[0] = vec4(color, 1.0);
+}
+@@ENDE` },
+  { mode: "shader", id: "unterwasser", title: "Unterwasser-Effekt und Vignette (final)", keys: ["unterwasser", "tauch", "vignette", "rand", "wackel", "verzerr", "unter wasser"], text: () => `(in final.fsh)
+uniform int isEyeInWater;
+uniform float frameTimeCounter;
+...
+    vec2 uv = texcoord;
+    if (isEyeInWater == 1) uv += vec2(sin(uv.y * 20.0 + frameTimeCounter * 2.0), cos(uv.x * 20.0 + frameTimeCounter * 2.0)) * 0.003;
+    vec3 c = texture2D(colortex0, uv).rgb;
+    if (isEyeInWater == 1) c = mix(c, vec3(0.05, 0.3, 0.45), 0.35);
+    vec2 d = texcoord - 0.5;
+    c *= 1.0 - dot(d, d) * 0.9;   // Vignette` },
+  { mode: "shader", id: "schatten", title: "Echte Schatten (shadow + gbuffers)", keys: ["schatten", "shadow", "realist", "licht", "sonnenlicht"], text: () => `@@DATEI: shaders/shadow.vsh
+#version 120
+#define SHADOW_BIAS 0.85
+varying vec2 texcoord;
+varying vec4 glcolor;
+void main() {
+    texcoord = gl_MultiTexCoord0.xy;
+    glcolor = gl_Color;
+    gl_Position = ftransform();
+    float dist = length(gl_Position.xy);
+    gl_Position.xy /= (1.0 - SHADOW_BIAS) + dist * SHADOW_BIAS;  // Verzerrung: mehr Auflösung nah am Spieler
+}
+@@ENDE
+@@DATEI: shaders/shadow.fsh
+#version 120
+uniform sampler2D texture;
+varying vec2 texcoord;
+varying vec4 glcolor;
+void main() {
+    vec4 c = texture2D(texture, texcoord) * glcolor;
+    if (c.a < 0.1) discard;
+    gl_FragData[0] = c;
+}
+@@ENDE
+(in gbuffers_terrain.vsh zusätzlich:)
+#define SHADOW_BIAS 0.85
+uniform mat4 shadowModelView;
+uniform mat4 shadowProjection;
+varying vec3 shadowPos;
+    // nach "vec4 pos = ...":
+    vec4 sp = shadowProjection * (shadowModelView * pos);
+    sp.xy /= (1.0 - SHADOW_BIAS) + length(sp.xy) * SHADOW_BIAS;
+    shadowPos = sp.xyz * 0.5 + 0.5;
+(in gbuffers_terrain.fsh zusätzlich:)
+const int shadowMapResolution = 2048;
+const float shadowDistance = 96.0;
+const float sunPathRotation = -25.0;
+uniform sampler2D shadowtex0;
+uniform vec3 shadowLightPosition;
+varying vec3 shadowPos;
+    // nach der Lightmap:
+    float ndl = dot(normal, normalize(shadowLightPosition));
+    float lit = ndl > 0.0 ? step(shadowPos.z - 0.001, texture2D(shadowtex0, shadowPos.xy).r) : 0.0;
+    color.rgb *= mix(0.55, 1.0, lit * clamp(ndl * 2.0, 0.0, 1.0) * lmcoord.y);` },
+
+  /* ---------------- MOD ---------------- */
+  { mode: "mod", id: "mod-basis", always: true, title: "Hauptklasse und fabric.mod.json", keys: [], text: v => { const E = ERA(v); return `@@DATEI: src/main/resources/fabric.mod.json
+{
+  "schemaVersion": 1,
+  "id": "rubinmod",
+  "version": "\${version}",
+  "name": "Rubin Mod",
+  "description": "Rubine für Minecraft",
+  "authors": ["Block-Schmiede"],
+  "license": "MIT",
+  "icon": "assets/rubinmod/icon.png",
+  "environment": "*",
+  "entrypoints": { "main": ["com.schmiede.rubinmod.RubinMod"] },
+  "depends": { "fabricloader": "*", "fabric-api": "*", "minecraft": "~${v}", "java": ">=${E.java}" }
+}
+@@ENDE
+@@DATEI: src/main/java/com/schmiede/rubinmod/RubinMod.java
+package com.schmiede.rubinmod;
+
+import net.fabricmc.api.ModInitializer;
+${E.slf4j ? "import org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;" : "import org.apache.logging.log4j.LogManager;\nimport org.apache.logging.log4j.Logger;"}
+
+public class RubinMod implements ModInitializer {
+    public static final String MOD_ID = "rubinmod";
+    public static final Logger LOGGER = ${E.slf4j ? "LoggerFactory.getLogger(MOD_ID)" : "LogManager.getLogger(MOD_ID)"};
+
+    @Override
+    public void onInitialize() {
+        ModItems.init();
+        ModBlocks.init();
+        LOGGER.info("Rubin Mod geladen");
+    }
+}
+@@ENDE
+Regel: Paketordner = package-Zeile, Dateiname = Klassenname. Jede Klasse, die onInitialize aufruft, muss es geben.` } },
+  { mode: "mod", id: "mod-item", title: "Neues Item registrieren", keys: ["item", "gegenstand", "edelstein", "rubin", "barren", "erz", "stab", "zauber", "essen", "schwert", "werkzeug", "ding"], text: v => { const E = ERA(v);
+    const head = `@@DATEI: src/main/java/com/schmiede/rubinmod/ModItems.java
+package com.schmiede.rubinmod;
+`;
+    if (E.old) return head + `
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemGroup;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.registry.Registry;
+
+public class ModItems {
+    public static final Item RUBY = register("ruby", new Item(new Item.Settings().group(ItemGroup.MISC)));
+
+    private static Item register(String name, Item item) {
+        return Registry.register(Registry.ITEM, new Identifier(RubinMod.MOD_ID, name), item);
+    }
+
+    public static void init() {}
+}
+@@ENDE`;
+    if (!E.regKeySettings) return head + `
+import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemGroups;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.util.Identifier;
+
+public class ModItems {
+    public static final Item RUBY = register("ruby", new Item(new Item.Settings()));
+
+    private static Item register(String name, Item item) {
+        return Registry.register(Registries.ITEM, ${E.ident}(RubinMod.MOD_ID, name), item);
+    }
+
+    public static void init() {
+        ItemGroupEvents.modifyEntriesEvent(ItemGroups.INGREDIENTS).register(entries -> entries.add(RUBY));
+    }
+}
+@@ENDE`;
+    return head + `
+import java.util.function.Function;
+import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemGroups;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.util.Identifier;
+
+public class ModItems {
+    public static final Item RUBY = register("ruby", Item::new, new Item.Settings());
+
+    private static Item register(String name, Function<Item.Settings, Item> factory, Item.Settings settings) {
+        RegistryKey<Item> key = RegistryKey.of(RegistryKeys.ITEM, Identifier.of(RubinMod.MOD_ID, name));
+        Item item = factory.apply(settings.registryKey(key));
+        return Registry.register(Registries.ITEM, key, item);
+    }
+
+    public static void init() {
+        ItemGroupEvents.modifyEntriesEvent(ItemGroups.INGREDIENTS).register(entries -> entries.add(RUBY));
+    }
+}
+@@ENDE`; } },
+  { mode: "mod", id: "mod-item-json", title: "Item-Modell, Textur und Übersetzung", keys: ["item", "textur", "modell", "gegenstand", "name"], text: v => { const E = ERA(v); return `@@DATEI: src/main/resources/assets/rubinmod/models/item/ruby.json
+{ "parent": "minecraft:item/generated", "textures": { "layer0": "rubinmod:item/ruby" } }
+@@ENDE
+${E.itemDefs ? `@@DATEI: src/main/resources/assets/rubinmod/items/ruby.json
+{ "model": { "type": "minecraft:model", "model": "rubinmod:item/ruby" } }
+@@ENDE
+` : ""}@@DATEI: src/main/resources/assets/rubinmod/lang/de_de.json
+{ "item.rubinmod.ruby": "Rubin", "block.rubinmod.ruby_ore": "Rubinerz", "item.rubinmod.ruby_ore": "Rubinerz" }
+@@ENDE
+(Schwerter und Werkzeuge: parent "minecraft:item/handheld". Textur als @@BILD unter src/main/resources/assets/rubinmod/textures/item/ruby.png)`; } },
+  { mode: "mod", id: "mod-block", title: "Neuer Block (mit Blockstate, Modellen, Drop und Spitzhacke)", keys: ["block", "erz", "ore", "stein", "lampe", "leucht", "bau", "ziegel", "holz"], text: v => { const E = ERA(v);
+    const sg = E.singular, tagDir = sg ? "block" : "blocks", lootDir = sg ? "loot_table" : "loot_tables";
+    let java;
+    if (E.old) java = `import net.fabricmc.fabric.api.object.builder.v1.block.FabricBlockSettings;
+import net.minecraft.block.Block;
+import net.minecraft.block.Material;
+import net.minecraft.item.BlockItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemGroup;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.registry.Registry;
+
+public class ModBlocks {
+    public static final Block RUBY_ORE = register("ruby_ore", new Block(FabricBlockSettings.of(Material.STONE).strength(3.0f).requiresTool()));
+
+    private static Block register(String name, Block block) {
+        Identifier id = new Identifier(RubinMod.MOD_ID, name);
+        Registry.register(Registry.ITEM, id, new BlockItem(block, new Item.Settings().group(ItemGroup.BUILDING_BLOCKS)));
+        return Registry.register(Registry.BLOCK, id, block);
+    }
+
+    public static void init() {}
+}`;
+    else if (!E.regKeySettings) java = `import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.minecraft.block.AbstractBlock;
+import net.minecraft.block.Block;
+import net.minecraft.item.BlockItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemGroups;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.util.Identifier;
+
+public class ModBlocks {
+    public static final Block RUBY_ORE = register("ruby_ore", new Block(AbstractBlock.Settings.create().strength(3.0f).requiresTool()));
+    // leuchtender Block: AbstractBlock.Settings.create().luminance(state -> 15)
+
+    private static Block register(String name, Block block) {
+        Identifier id = ${E.ident}(RubinMod.MOD_ID, name);
+        Registry.register(Registries.ITEM, id, new BlockItem(block, new Item.Settings()));
+        return Registry.register(Registries.BLOCK, id, block);
+    }
+
+    public static void init() {
+        ItemGroupEvents.modifyEntriesEvent(ItemGroups.NATURAL).register(entries -> entries.add(RUBY_ORE));
+    }
+}`;
+    else java = `import java.util.function.Function;
+import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.minecraft.block.AbstractBlock;
+import net.minecraft.block.Block;
+import net.minecraft.item.BlockItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemGroups;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.util.Identifier;
+
+public class ModBlocks {
+    public static final Block RUBY_ORE = register("ruby_ore", Block::new, AbstractBlock.Settings.create().strength(3.0f).requiresTool());
+    // leuchtender Block: AbstractBlock.Settings.create().luminance(state -> 15)
+
+    private static Block register(String name, Function<AbstractBlock.Settings, Block> factory, AbstractBlock.Settings settings) {
+        Identifier id = Identifier.of(RubinMod.MOD_ID, name);
+        RegistryKey<Block> blockKey = RegistryKey.of(RegistryKeys.BLOCK, id);
+        Block block = factory.apply(settings.registryKey(blockKey));
+        RegistryKey<Item> itemKey = RegistryKey.of(RegistryKeys.ITEM, id);
+        Registry.register(Registries.ITEM, itemKey, new BlockItem(block, new Item.Settings().registryKey(itemKey)));
+        return Registry.register(Registries.BLOCK, blockKey, block);
+    }
+
+    public static void init() {
+        ItemGroupEvents.modifyEntriesEvent(ItemGroups.NATURAL).register(entries -> entries.add(RUBY_ORE));
+    }
+}`;
+    return `@@DATEI: src/main/java/com/schmiede/rubinmod/ModBlocks.java
+package com.schmiede.rubinmod;
+
+${java}
+@@ENDE
+@@DATEI: src/main/resources/assets/rubinmod/blockstates/ruby_ore.json
+{ "variants": { "": { "model": "rubinmod:block/ruby_ore" } } }
+@@ENDE
+@@DATEI: src/main/resources/assets/rubinmod/models/block/ruby_ore.json
+{ "parent": "minecraft:block/cube_all", "textures": { "all": "rubinmod:block/ruby_ore" } }
+@@ENDE
+@@DATEI: src/main/resources/assets/rubinmod/models/item/ruby_ore.json
+{ "parent": "rubinmod:block/ruby_ore" }
+@@ENDE
+${E.itemDefs ? `@@DATEI: src/main/resources/assets/rubinmod/items/ruby_ore.json
+{ "model": { "type": "minecraft:model", "model": "rubinmod:block/ruby_ore" } }
+@@ENDE
+` : ""}@@DATEI: src/main/resources/data/rubinmod/${lootDir}/blocks/ruby_ore.json
+{ "type": "minecraft:block", "pools": [ { "rolls": 1, "entries": [ { "type": "minecraft:item", "name": "rubinmod:ruby" } ], "conditions": [ { "condition": "minecraft:survives_explosion" } ] } ] }
+@@ENDE
+@@DATEI: src/main/resources/data/minecraft/tags/${tagDir}/mineable/pickaxe.json
+{ "replace": false, "values": [ "rubinmod:ruby_ore" ] }
+@@ENDE
+@@DATEI: src/main/resources/data/minecraft/tags/${tagDir}/needs_iron_tool.json
+{ "replace": false, "values": [ "rubinmod:ruby_ore" ] }
+@@ENDE
+(Textur als @@BILD unter src/main/resources/assets/rubinmod/textures/block/ruby_ore.png. In die Übersetzung "block.rubinmod.ruby_ore" UND "item.rubinmod.ruby_ore" schreiben.)`; } },
+  { mode: "mod", id: "mod-essen", title: "Essen mit Effekt", keys: ["essen", "food", "pizza", "apfel", "kuchen", "brot", "trank", "snack", "nahrung", "frucht", "süß", "suess"], text: v => { const E = ERA(v);
+    if (!E.components) return `Essen (vor 1.20.5):
+new Item(new Item.Settings()${E.old ? ".group(ItemGroup.FOOD)" : ""}.food(new FoodComponent.Builder().hunger(6).saturationModifier(0.6f)
+    .statusEffect(new StatusEffectInstance(StatusEffects.SPEED, 200, 0), 1.0f).build()))
+Imports: net.minecraft.item.FoodComponent, net.minecraft.entity.effect.StatusEffectInstance, net.minecraft.entity.effect.StatusEffects`;
+    if (!E.regKeySettings) return `Essen (1.20.5 bis 1.21.1):
+new Item(new Item.Settings().food(new FoodComponent.Builder().nutrition(6).saturationModifier(0.6f)
+    .statusEffect(new StatusEffectInstance(StatusEffects.SPEED, 200, 0), 1.0f).build()))
+Imports: net.minecraft.component.type.FoodComponent, net.minecraft.entity.effect.StatusEffectInstance, net.minecraft.entity.effect.StatusEffects`;
+    return `Essen (ab 1.21.2): Nährwert über FoodComponent, Effekte über ConsumableComponent:
+register("pizza", Item::new, new Item.Settings().food(
+    new FoodComponent.Builder().nutrition(6).saturationModifier(0.6f).build(),
+    ConsumableComponents.food().consumeEffect(new ApplyEffectsConsumeEffect(new StatusEffectInstance(StatusEffects.SPEED, 200, 0), 1.0f)).build()))
+Imports: net.minecraft.component.type.FoodComponent, net.minecraft.component.type.ConsumableComponents, net.minecraft.item.consume.ApplyEffectsConsumeEffect, net.minecraft.entity.effect.StatusEffectInstance, net.minecraft.entity.effect.StatusEffects`; } },
+  { mode: "mod", id: "mod-schwert", title: "Schwert und Werkzeuge", keys: ["schwert", "sword", "werkzeug", "spitzhacke", "axt", "schaufel", "waffe", "tool", "pickaxe"], text: v => { const E = ERA(v);
+    if (!E.components) return `Schwert (vor 1.20.5), Werkzeug-Material als enum oder Klasse, die ToolMaterial implementiert
+(getDurability, getMiningSpeedMultiplier, getAttackDamage, getMiningLevel, getEnchantability, getRepairIngredient):
+new SwordItem(ToolMaterials.DIAMOND, 3, -2.4f, new Item.Settings())
+new PickaxeItem(ToolMaterials.DIAMOND, 1, -2.8f, new Item.Settings())
+Item-Modell mit "parent": "minecraft:item/handheld".`;
+    if (!E.regKeySettings) return `Schwert (1.20.5 bis 1.21.1). Eigenes Material: Klasse/enum implementiert ToolMaterial mit
+getDurability(), getMiningSpeedMultiplier(), getAttackDamage(), getInverseTag() (z.B. BlockTags.INCORRECT_FOR_IRON_TOOL), getEnchantability(), getRepairIngredient().
+new SwordItem(material, new Item.Settings().attributeModifiers(SwordItem.createAttributeModifiers(material, 3, -2.4f)))
+new PickaxeItem(material, new Item.Settings().attributeModifiers(PickaxeItem.createAttributeModifiers(material, 1.0f, -2.8f)))
+Item-Modell mit "parent": "minecraft:item/handheld".`;
+    const mat = `public static final ToolMaterial RUBY_MATERIAL = new ToolMaterial(BlockTags.INCORRECT_FOR_IRON_TOOL, 900, 7.0f, 2.5f, 18, ItemTags.DIAMOND_TOOL_MATERIALS);`;
+    if (!atLeast(v, "1.21.5")) return `Schwert (1.21.2 bis 1.21.4). ToolMaterial ist ein record:
+${mat}
+register("ruby_sword", s -> new SwordItem(RUBY_MATERIAL, 3.0f, -2.4f, s), new Item.Settings());
+register("ruby_pickaxe", s -> new PickaxeItem(RUBY_MATERIAL, 1.0f, -2.8f, s), new Item.Settings());
+Item-Modell mit "parent": "minecraft:item/handheld".`;
+    return `Schwert (ab 1.21.5). ToolMaterial ist ein record, Schwerter/Werkzeuge über die Item.Settings:
+${mat}
+register("ruby_sword", Item::new, new Item.Settings().sword(RUBY_MATERIAL, 3.0f, -2.4f));
+register("ruby_pickaxe", Item::new, new Item.Settings().pickaxe(RUBY_MATERIAL, 1.0f, -2.8f));
+Item-Modell mit "parent": "minecraft:item/handheld".`; } },
+  { mode: "mod", id: "rezept", title: "Crafting-Rezept", keys: ["rezept", "craft", "herstell", "werkbank", "recipe", "bauen aus"], text: v => recipeSnippet(v, "rubinmod", "src/main/resources/") },
+  { mode: "mod", id: "mod-erzgen", title: "Erz in der Welt erzeugen", keys: ["erz", "ore", "generier", "welt", "spawnt", "höhle", "hoehle", "vorkommen"], text: v => { const E = ERA(v);
+    if (!atLeast(v, "1.19.3")) return "Erz-Erzeugung vor 1.19.3 ist kompliziert: lass sie weg und mach das Erz craftbar.";
+    return `@@DATEI: src/main/resources/data/rubinmod/worldgen/configured_feature/ruby_ore.json
+{ "type": "minecraft:ore", "config": { "size": 6, "discard_chance_on_air_exposure": 0.0, "targets": [ { "target": { "predicate_type": "minecraft:tag_match", "tag": "minecraft:stone_ore_replaceables" }, "state": { "Name": "rubinmod:ruby_ore" } } ] } }
+@@ENDE
+@@DATEI: src/main/resources/data/rubinmod/worldgen/placed_feature/ruby_ore.json
+{ "feature": "rubinmod:ruby_ore", "placement": [ { "type": "minecraft:count", "count": 8 }, { "type": "minecraft:in_square" }, { "type": "minecraft:height_range", "height": { "type": "minecraft:trapezoid", "min_inclusive": { "above_bottom": 0 }, "max_inclusive": { "absolute": 64 } } }, { "type": "minecraft:biome" } ] }
+@@ENDE
+In onInitialize:
+BiomeModifications.addFeature(BiomeSelectors.foundInOverworld(), GenerationStep.Feature.UNDERGROUND_ORES,
+    RegistryKey.of(RegistryKeys.PLACED_FEATURE, ${E.ident}(MOD_ID, "ruby_ore")));
+Imports: net.fabricmc.fabric.api.biome.v1.BiomeModifications, net.fabricmc.fabric.api.biome.v1.BiomeSelectors, net.minecraft.world.gen.GenerationStep, net.minecraft.registry.RegistryKey, net.minecraft.registry.RegistryKeys`; } },
+
+  /* ---------------- DATAPACK ---------------- */
+  { mode: "datapack", id: "dp-zeit", title: "Zähler und Anzeige in der Seitenleiste", keys: ["zähl", "zaehl", "zeit", "timer", "punkte", "score", "seitenleiste", "anzeige", "uhr", "kills", "tode", "statistik"], text: v => { const I = vinfo(v), fn = I.singular ? "function" : "functions";
+    const name = I.snbtText ? `{text:"Spielzeit (min)",color:"gold"}` : `{"text":"Spielzeit (min)","color":"gold"}`;
+    return `@@DATEI: data/schmiede/${fn}/load.mcfunction
+scoreboard objectives add schmiede_ticks dummy
+scoreboard objectives add spielzeit dummy ${name}
+scoreboard objectives setdisplay sidebar spielzeit
+@@ENDE
+@@DATEI: data/schmiede/${fn}/tick.mcfunction
+scoreboard players add @a schmiede_ticks 1
+execute as @a[scores={schmiede_ticks=1200..}] run scoreboard players add @s spielzeit 1
+scoreboard players set @a[scores={schmiede_ticks=1200..}] schmiede_ticks 0
+@@ENDE
+(Statistik-Zähler: scoreboard objectives add tode deathCount / minecraft.custom:minecraft.mob_kills)`; } },
+  { mode: "datapack", id: "dp-items", title: "Items mit Namen und Verzauberung geben", keys: ["item", "geben", "give", "kit", "starter", "schwert", "verzauber", "name", "belohn"], text: v => { const I = vinfo(v);
+    let ex;
+    if (!I.components) ex = `give @s minecraft:diamond_sword{display:{Name:'{"text":"Heldenschwert","color":"gold"}'},Enchantments:[{id:"minecraft:sharpness",lvl:5s}]} 1`;
+    else if (!I.snbtText) ex = `give @s minecraft:diamond_sword[custom_name='{"text":"Heldenschwert","color":"gold"}',enchantments={levels:{"minecraft:sharpness":5}}] 1`;
+    else ex = `give @s minecraft:diamond_sword[custom_name={text:"Heldenschwert",color:"gold"},enchantments={"minecraft:sharpness":5}] 1`;
+    return `Item-Syntax für ${v}:
+${ex}
+Einmalig pro Spieler: mit Tag merken: give @a[tag=!bekommen] ... und danach tag @a[tag=!bekommen] add bekommen`; } },
+  { mode: "datapack", id: "dp-erkennen", title: "Erkennen, wenn ein Spieler etwas tut (Advancement-Trigger)", keys: ["wenn", "sobald", "isst", "essen", "benutz", "erkenn", "trigger", "rechtsklick", "stirbt", "tötet", "toetet", "betritt"], text: v => { const I = vinfo(v), adv = I.singular ? "advancement" : "advancements", fn = I.singular ? "function" : "functions";
+    const item = I.components ? `"items": "minecraft:golden_apple"` : `"items": ["minecraft:golden_apple"]`;
+    return `@@DATEI: data/schmiede/${adv}/goldapfel.json
+{ "criteria": { "gegessen": { "trigger": "minecraft:consume_item", "conditions": { "item": { ${item} } } } }, "rewards": { "function": "schmiede:goldapfel" } }
+@@ENDE
+@@DATEI: data/schmiede/${fn}/goldapfel.mcfunction
+effect give @s minecraft:speed 30 1
+advancement revoke @s only schmiede:goldapfel
+@@ENDE
+(Andere Trigger: minecraft:player_killed_entity, minecraft:entity_hurt_player, minecraft:using_item, minecraft:location, minecraft:placed_block)`; } },
+  { mode: "datapack", id: "dp-mobs", title: "Mobs verändern und Effekte geben", keys: ["mob", "zombie", "skelett", "creeper", "monster", "tier", "effekt", "rüstung", "ruestung", "stark", "schnell", "boss"], text: () => `Einmal pro Mob mit Tag:
+execute as @e[type=minecraft:zombie,tag=!schmiede_ok] run function schmiede:zombie_neu
+(zombie_neu.mcfunction:)
+item replace entity @s armor.head with minecraft:iron_helmet
+effect give @s minecraft:speed infinite 0 true
+tag @s add schmiede_ok
+(effect give <ziel> <effekt> <sekunden|infinite> <stärke> <ohnePartikel>; "infinite" gibt es ab 1.19.4, davor z.B. 1000000)` },
+  { mode: "datapack", id: "rezept", title: "Crafting-Rezept", keys: ["rezept", "craft", "herstell", "werkbank", "recipe"], text: v => recipeSnippet(v, "schmiede", "") }
+];
+function recipeSnippet(v, ns, prefix) {
+  const I = vinfo(v), dir = I.singular ? "recipe" : "recipes";
+  const key = atLeast(v, "1.21.2") ? `"#": "minecraft:diamond", "S": "minecraft:stick"` : `"#": { "item": "minecraft:diamond" }, "S": { "item": "minecraft:stick" }`;
+  const result = I.components ? `{ "id": "minecraft:diamond_sword", "count": 1 }` : `{ "item": "minecraft:diamond_sword", "count": 1 }`;
+  return `@@DATEI: ${prefix}data/${ns}/${dir}/schwert.json
+{ "type": "minecraft:crafting_shaped", "pattern": [ " # ", " # ", " S " ], "key": { ${key} }, "result": ${result} }
+@@ENDE
+(Format für ${v}: ${atLeast(v, "1.21.2") ? "Zutaten als einfacher Text" : 'Zutaten als {"item": ...}'}, Ergebnis mit ${I.components ? '"id"' : '"item"'}. Formloses Rezept: "type": "minecraft:crafting_shapeless", "ingredients": [ ... ])`;
+}
+function pickKnowledge(mode, version, text, budget) {
+  const t = (text || "").toLowerCase();
+  const list = KNOWLEDGE.filter(k => k.mode === mode).map(k => ({ k, score: k.always ? 100 : k.keys.reduce((s, w) => s + (t.includes(w) ? 1 : 0), 0) }));
+  list.sort((a, b) => b.score - a.score);
+  let out = "", used = 0;
+  for (const { k, score } of list) {
+    if (score <= 0) continue;
+    const body = `### ${k.title}\n${k.text(version)}\n\n`;
+    if (used + body.length > budget && !k.always) continue;
+    out += body; used += body.length;
+  }
+  return out ? `WISSENSBIBLIOTHEK (geprüfte Bausteine für Minecraft ${version}). Übernimm sie und passe Namen und Werte an den Auftrag an, statt eigene Varianten zu erfinden. "rubinmod"/"Rubin" und "schmiede" sind nur Beispielnamen:\n\n${out}` : "";
+}
+
+/* =====================================================================
    EIGENE KI
    Ein Sprachmodell, das direkt im Browser auf deiner Grafikkarte läuft
    (WebLLM + WebGPU). Kein Konto, kein Server, nach dem ersten Laden
@@ -922,7 +1591,7 @@ const Brain = (() => {
     if (signal && signal.aborted) throw { code: "cancelled", text: clean(text) };
     return { text: clean(text), truncated: finish === "length" };
   }
-  return { generate, support, context: () => ctx, loaded: () => loadedKey };
+  return { generate, support, load, context: () => ctx, loaded: () => loadedKey };
 })();
 
 /* ---------- Beispiele, damit auch kleine Modelle das Format treffen ---------- */
@@ -960,13 +1629,14 @@ Tippe im Spiel /reload ein.
   };
 }
 
-function systemPrompt(mode, version) {
+function systemPrompt(mode, version, knowledge = "") {
   return `Du bist die Block-Schmiede KI, eine KI, die nur dafür gebaut ist, Minecraft-Shaderpacks, Fabric-Mods und Datapacks zu erstellen. Du lieferst Dateien, die beim ersten Versuch funktionieren.
 
 ${RULES[mode](version)}
 
-${FORMAT}`;
+${FORMAT}${knowledge ? "\n\n" + knowledge : ""}`;
 }
+function knowledgeBudget() { return Brain.context() >= 16384 ? 9000 : Brain.context() >= 8192 ? 4000 : 1500; }
 
 /* Projekt für eine Änderung mitschicken: wichtige Dateien ganz, der Rest nur als Name */
 function serializeBudget(p, budget, focus = []) {
@@ -1163,41 +1833,160 @@ function finish(kind, msg) {
 }
 function showNoAI(text) { const n = $("no-ai"); n.textContent = text; n.hidden = false; }
 
-/* Selbstreparatur: Prüfung + echter Shader-Test, dann bis zu 2 Reparaturrunden */
+/* Selbstreparatur: Prüfung + echter Shader-Test, dann bis zu 3 Reparaturrunden */
+const REPAIR_ROUNDS = 3;
 async function selfRepair(round) {
   if (!$("autofix").checked) return;
   const p = state.project;
   const problems = check(p, state.projMode, state.projVersion).filter(r => r.level === "err").map(r => r.text);
   if (state.projMode === "shader") { const err = Preview.testCompile(p, state.projVersion); if (err) problems.push(err); }
   if (!problems.length) { if (round > 0) setStatus("ok", `Repariert! Nach ${round} Runde${round > 1 ? "n" : ""} keine Fehler mehr.`); return; }
-  if (round >= 2) { setStatus("err", "Ein paar Fehler sind nach 2 Reparaturrunden noch da. Nutze den Fehler-Doktor oder ein grösseres Gehirn."); return; }
-  const focus = p.files.filter(f => problems.some(t => t.includes(f.path) || t.includes(f.path.split("/").pop().replace(/\.(vsh|fsh)$/, "")))).map(f => f.path);
-  const task = `DIE AUTOMATISCHE PRÜFUNG HAT FEHLER GEFUNDEN:\n- ${problems.join("\n- ").slice(0, 4000)}\n\nRepariere genau diese Fehler.`;
-  await runChange(task, `Selbstreparatur ${round + 1}/2:`, focus, round + 1);
+  if (round >= REPAIR_ROUNDS) { setStatus("err", `Nach ${REPAIR_ROUNDS} Reparaturrunden sind noch Fehler da. Nutze den Fehler-Doktor oder das grosse Gehirn.`); return; }
+  const focus = p.files.filter(f => problems.some(t => t.includes(f.path) || t.includes(f.path.split("/").pop().replace(/\.(vsh|fsh|java)$/, "")))).map(f => f.path);
+  const task = `DIE AUTOMATISCHE PRÜFUNG HAT FEHLER GEFUNDEN:\n- ${problems.join("\n- ").slice(0, 4000)}\n\nRepariere genau diese Fehler. Fehlt eine Datei oder Klasse, lege sie an.`;
+  await runChange(task, `Selbstreparatur ${round + 1}/${REPAIR_ROUNDS}:`, focus, round + 1);
 }
 
-function budgetChars() { return Brain.context() >= 16384 ? 18000 : Brain.context() >= 8192 ? 7000 : 2500; }
+function budgetChars() { return Brain.context() >= 16384 ? 16000 : Brain.context() >= 8192 ? 6000 : 2500; }
 async function runChange(task, label, focus, round) {
   const p = state.project;
+  const know = pickKnowledge(state.projMode, state.projVersion, task + " " + p.name + " " + p.info, Math.round(knowledgeBudget() / 2));
   const messages = [
-    { role: "system", content: systemPrompt(state.projMode, state.projVersion) },
+    { role: "system", content: systemPrompt(state.projMode, state.projVersion, know) },
     { role: "user", content: `AKTUELLES PROJEKT:\n${serializeBudget(p, budgetChars(), focus)}\n\n${task}\n\nGib NUR die Dateien aus, die du änderst oder neu anlegst, jede KOMPLETT. Beginne mit @@PROJEKT und @@INFO (ein Satz, was du geändert hast) und ende mit @@FERTIG.` }
   ];
   state.mode = state.projMode; state.version = state.projVersion;
   await run(messages, label, { partialOf: p, round });
 }
 
-function buildNew() {
-  const desc = $("desc").value.trim();
-  if (!desc) { toast("Schreib zuerst, was gebaut werden soll."); $("desc").focus(); return; }
+/* Plan aus der KI-Antwort lesen (tolerant) */
+function parsePlan(text) {
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  let j;
+  try { j = JSON.parse(text.slice(a, b + 1)); }
+  catch { try { j = JSON.parse(text.slice(a, b + 1).replace(/,\s*([}\]])/g, "$1")); } catch { return null; } }
+  if (!j || !Array.isArray(j.files)) return null;
+  const seen = new Set(), files = [];
+  for (const f of j.files) {
+    const path = cleanPath(String((f && (f.path || f.datei || f.file)) || f || ""));
+    if (!path || seen.has(path) || !/\.[a-z0-9]+$/i.test(path)) continue;
+    seen.add(path); files.push({ path, what: String((f && (f.what || f.zweck || f.purpose || f.inhalt)) || "") });
+  }
+  return files.length ? { name: String(j.name || ""), info: String(j.info || ""), guide: Array.isArray(j.guide) ? j.guide.map(String) : [], files } : null;
+}
+const SCAFFOLD = /^(build\.gradle|settings\.gradle|gradle\.properties|gradle\/wrapper\/gradle-wrapper\.properties|gradlew(\.bat)?)$/;
+function fileOrder(path) {
+  // Wichtige Dateien zuerst, damit spätere Dateien darauf aufbauen
+  if (/fabric\.mod\.json$|pack\.mcmeta$|block\.properties$/.test(path)) return 0;
+  if (/\.java$/.test(path)) return /Mod\.java$|Main/.test(path) ? 1 : 2;
+  if (/\.(vsh|fsh|glsl)$/.test(path)) return /gbuffers/.test(path) ? 1 : /composite|deferred/.test(path) ? 2 : 3;
+  if (/\.png$/.test(path)) return 6;
+  if (/lang\//.test(path)) return 5;
+  return 4;
+}
+
+/* Gründlich: erst planen, dann jede Datei einzeln schreiben */
+async function deepBuild(desc) {
+  if (state.busy) return;
+  const mode = state.mode, version = state.version, key = $("brain").value;
+  state.busy = true; state.followLast = true;
+  state.ctl = new AbortController();
+  const sig = state.ctl.signal;
+  const before = { project: state.project, projMode: state.projMode, projVersion: state.projVersion, isExample: state.isExample };
+  state.projMode = mode; state.projVersion = version; state.isExample = false;
+  state.project = { name: "", info: "", files: [], guide: [] };
+  $("go").hidden = true; $("stop").hidden = false;
+  setStatus("work", "KI startet …");
+  renderProject(true);
+  const onProgress = r => setStatus("work", progressText(r));
+  let ok = false, fallback = false;
+  try {
+    await Brain.load(key, onProgress);
+    $("loadbar").hidden = true;
+    const know = pickKnowledge(mode, version, desc, knowledgeBudget());
+    const sys = systemPrompt(mode, version, know);
+
+    // Schritt 1: Plan
+    setStatus("work", "Schritt 1 von 3: Ich plane das Projekt …");
+    const pr = await Brain.generate(key, [
+      { role: "system", content: sys },
+      { role: "user", content: `AUFTRAG DES SPIELERS:\n${desc}\n\nPLANE ZUERST. Antworte NUR mit JSON in dieser Form, ohne weiteren Text:\n{"name":"Projektname","info":"ein Satz, was es macht","files":[{"path":"pfad/datei.ext","what":"was genau in dieser Datei steht"}],"guide":["Schritt 1","Schritt 2"]}\nListe ALLE Dateien auf, die das Projekt braucht (Texturen als .png).${mode === "mod" ? " Gradle-Dateien NICHT aufzählen, die macht die Werkstatt." : ""}` }
+    ], { signal: sig, maxTokens: 2000, onProgress });
+    const plan = parsePlan(pr.text);
+    if (!plan) { fallback = true; throw { code: "noplan" }; }
+    plan.files = plan.files.filter(f => !(mode === "mod" && SCAFFOLD.test(f.path))).slice(0, 30);
+    plan.files.sort((a, b) => fileOrder(a.path) - fileOrder(b.path));
+    Object.assign(state.project, { name: plan.name, info: plan.info, guide: plan.guide });
+    const planText = plan.files.map(f => `- ${f.path}: ${f.what}`).join("\n");
+
+    // Schritt 2: jede Datei einzeln
+    for (let i = 0; i < plan.files.length; i++) {
+      const pf = plan.files[i], isImg = /\.png$/i.test(pf.path), dir = pf.path.split("/").slice(0, -1).join("/");
+      setStatus("work", `Schritt 2 von 3: Datei ${i + 1}/${plan.files.length}: ${pf.path}`);
+      const focus = state.project.files.filter(f => /\.java$|fabric\.mod\.json$|pack\.mcmeta$|block\.properties$|lang\//.test(f.path) || f.path.startsWith(dir + "/")).map(f => f.path);
+      const shown = state.project.files.length ? serializeBudget(state.project, Math.round(budgetChars() * 0.6), focus) : "(noch nichts)";
+      const tag = isImg ? "@@BILD" : "@@DATEI";
+      const slot = { path: pf.path, type: isImg ? "image" : "text", content: isImg ? "" : "", closed: false, pixels: { pal: {}, rows: [] } };
+      state.project.files.push(slot);
+      renderProject(true);
+      const res = await Brain.generate(key, [
+        { role: "system", content: sys },
+        { role: "user", content: `AUFTRAG DES SPIELERS:\n${desc}\n\nPROJEKTPLAN (alle Dateien):\n${planText}\n\nSCHON GESCHRIEBEN:\n${shown}\n\nSchreibe jetzt NUR die Datei "${pf.path}" (${pf.what || "siehe Plan"}). Sie muss zu den anderen Dateien passen (gleiche Namen, Pakete, IDs). Antworte nur so:\n${tag}: ${pf.path}\n<kompletter Inhalt>\n@@ENDE` }
+      ], {
+        signal: sig, maxTokens: isImg ? 900 : 3500, onProgress,
+        onText: ({ text }) => {
+          const got = parse(text).files[0];
+          if (got) { slot.content = got.content; if (isImg) slot.pixels = got.pixels; }
+          else if (!isImg) slot.content = text;
+          renderProject(true);
+        }
+      });
+      const parsed = parse(res.text).files;
+      const got = parsed.find(f => f.path === pf.path) || parsed[0];
+      if (got) { slot.content = got.content; slot.type = isImg ? "image" : "text"; if (isImg) slot.pixels = got.type === "image" ? got.pixels : parsePixels(got.content); slot.closed = !res.truncated; }
+      else if (!isImg) { slot.content = stripFences(res.text.trim()) + "\n"; slot.closed = !res.truncated; }
+      else { state.project.files.pop(); }
+      // Weitere Dateien, die die KI nebenbei geschrieben hat, übernehmen
+      for (const extra of parsed) if (extra !== got && !state.project.files.some(f => f.path === extra.path)) state.project.files.push(extra);
+      renderProject(true);
+    }
+
+    // Schritt 3: Gradle-Dateien und Prüfung
+    if (mode === "mod") { setStatus("work", "Schritt 3 von 3: Hole echte Fabric-Versionen …"); await applyFabricScaffold(state.project, version); }
+    ok = true;
+    finish("ok", `Fertig: ${state.project.files.length} Dateien, jede einzeln geschrieben.`);
+  } catch (e) {
+    $("loadbar").hidden = true;
+    if (e && e.code === "cancelled") finish("err", "Gestoppt. Was schon fertig war, bleibt hier.");
+    else if (e && e.code === "noplan") finish("err", "Der Plan hat nicht geklappt. Ich baue das Projekt in einem Stück.");
+    else if (e && (e.code === "no_webgpu" || e.code === "no_download" || e.code === "load_failed")) { finish("err", e.message); if (e.code !== "load_failed") showNoAI(e.message); }
+    else finish("err", (e && ERRORS[e.code]) || (e && e.message) || "Etwas ist schiefgegangen. Versuche es nochmal.");
+    state.project.files = state.project.files.filter(f => f.content);
+    if (!state.project.files.length) Object.assign(state, before);
+  }
+  if (fallback) { Object.assign(state, before); state.mode = mode; state.version = version; return quickBuild(desc); }
+  if (state.project.files.length && !state.isExample) store.set("last-project", JSON.stringify({ raw: serialize(state.project), mode: state.projMode, version: state.projVersion }));
+  state.rev++;
+  renderProject(false);
+  if (ok) await selfRepair(0);
+}
+
+/* Schnell: alles in einem Stück */
+function quickBuild(desc) {
   const ex = exampleFor(state.mode, state.version);
   const messages = [
-    { role: "system", content: systemPrompt(state.mode, state.version) },
+    { role: "system", content: systemPrompt(state.mode, state.version, pickKnowledge(state.mode, state.version, desc, knowledgeBudget())) },
     { role: "user", content: ex.q },
     { role: "assistant", content: ex.a },
     { role: "user", content: "AUFTRAG DES SPIELERS:\n" + desc }
   ];
-  run(messages, "");
+  return run(messages, "");
+}
+function buildNew() {
+  const desc = $("desc").value.trim();
+  if (!desc) { toast("Schreib zuerst, was gebaut werden soll."); $("desc").focus(); return; }
+  if ($("deep").checked) deepBuild(desc); else quickBuild(desc);
 }
 function buildChange(kind) {
   const p = state.project; if (!p || !p.files.length || state.busy) return;
